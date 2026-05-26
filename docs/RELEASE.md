@@ -1,15 +1,23 @@
 # Release
 
-PocketStack v1 releases are published from tags. Use a fresh semantic version for each release.
+PocketStack v1 releases are published from Git tags.
+
+## Local Gate
+
+Run the full local gate before tagging:
 
 ```sh
-git tag v1.0.1
-git push origin main v1.0.1
+nvm use
+make release-check
 ```
 
-The `release` workflow runs GoReleaser and publishes Linux, macOS, and Windows binaries for amd64 and arm64 with checksums.
+That target runs Go tests, runtime tests, `go vet`, generated-demo smoke tests,
+a GoReleaser snapshot, and checksum verification.
 
-Before tagging:
+The Node toolchain targets Node 26; CI and release workflows use
+`actions/setup-node` with `node-version: "26"`.
+
+The individual commands are:
 
 ```sh
 npm ci
@@ -19,7 +27,21 @@ npm run test:runtime
 go test ./...
 go vet ./...
 make smoke
-goreleaser release --clean --skip=publish
+make release-dry-run
+make verify-checksums
 ```
 
-If GitHub publishing is unavailable, the same GoReleaser command with `--skip=publish` produces complete local archives and `checksums.txt` under `dist/`.
+`make release-dry-run` produces snapshot archives and `checksums.txt` under
+`dist/`.
+
+## Publish
+
+Use a fresh semantic version:
+
+```sh
+git tag v1.0.1
+git push origin main v1.0.1
+```
+
+The GitHub `release` workflow runs GoReleaser and publishes Linux, macOS, and
+Windows binaries for amd64 and arm64 with checksums.

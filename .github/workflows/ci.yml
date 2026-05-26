@@ -15,7 +15,7 @@ jobs:
           go-version: "1.22"
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "26"
           cache: npm
       - run: npm ci
       - run: npm run build:wasi-example
@@ -24,4 +24,8 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - run: go build -o bin/pocketstack ./cmd/pocketstack
-      - run: make smoke
+      - run: make pages
+      - run: npx playwright install --with-deps chromium webkit msedge
+      - run: npm run test:browsers
+        env:
+          POCKETSTACK_REQUIRE_BROWSERS: "1"

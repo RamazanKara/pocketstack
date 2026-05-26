@@ -1,0 +1,14 @@
+{
+  "method": "GET",
+  "path": "/search?q=pocketstack",
+  "status": 200,
+  "body": {
+    "query": "pocketstack",
+    "results": [
+      {
+        "id": "demo",
+        "name": "PocketStack launch mug"
+      }
+    ]
+  }
+}

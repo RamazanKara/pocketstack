@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/health",
+  "body": {
+    "ok": true,
+    "source": "fixture"
+  }
+}

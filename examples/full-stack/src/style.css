@@ -1,0 +1,25 @@
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #f7f8fb;
+  color: #172033;
+}
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 20px;
+}
+
+section {
+  margin-top: 20px;
+  padding: 18px;
+  background: white;
+  border: 1px solid #dfe4ee;
+  border-radius: 8px;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

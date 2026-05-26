@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PocketStack Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Browser-only Compose analysis</p>
+        <h1>PocketStack Studio</h1>
+      </div>
+      <div class="runtime-pill" title="All parsing and analysis happens in this tab.">
+        <span class="dot"></span>
+        browser-only
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="upload-panel" aria-labelledby="upload-title">
+        <div>
+          <h2 id="upload-title">Compose project</h2>
+          <p>
+            Docker Compose YAML with optional local assets for static, frontend,
+            mock, database, and WASI adapters.
+          </p>
+        </div>
+
+        <div class="compose-inputs">
+          <div class="drop-zone" id="drop-zone">
+            <input id="compose-file" type="file" accept=".yaml,.yml" />
+            <label for="compose-file">
+              <strong>Upload Compose YAML</strong>
+              <span id="compose-name">docker-compose.yml or compose.yaml</span>
+            </label>
+          </div>
+
+          <label class="compose-editor" for="compose-text">
+            <span>Paste Compose YAML</span>
+            <textarea
+              id="compose-text"
+              spellcheck="false"
+              placeholder="services:&#10;  web:&#10;    image: nginx:alpine"
+            ></textarea>
+            <small id="compose-input-meta">Paste YAML here or upload a file.</small>
+          </label>
+        </div>
+
+        <div class="folder-row">
+          <label class="folder-picker">
+            <input id="project-folder" type="file" webkitdirectory directory multiple />
+            <span>Project folder</span>
+            <small id="folder-count">optional, no files selected</small>
+          </label>
+          <button id="analyze-button" class="primary" type="button">Analyze</button>
+          <button id="sample-button" type="button">Try sample</button>
+          <button id="clear-button" type="button">Clear</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="Analysis summary">
+        <div>
+          <span>Mode</span>
+          <strong id="mode-value">waiting</strong>
+        </div>
+        <div>
+          <span>Services</span>
+          <strong id="service-count">0</strong>
+        </div>
+        <div>
+          <span>Ready</span>
+          <strong id="ready-count">0</strong>
+        </div>
+        <div>
+          <span>Needs files</span>
+          <strong id="needs-count">0</strong>
+        </div>
+      </section>
+
+      <section class="notice" id="notice" hidden></section>
+
+      <section class="workspace">
+        <div class="service-column">
+          <div class="section-heading">
+            <h2>Services</h2>
+            <button id="download-button" type="button" disabled>Download manifest</button>
+          </div>
+          <div id="service-list" class="service-list">
+          <div class="empty-state">
+              No project loaded.
+            </div>
+          </div>
+        </div>
+
+        <div class="preview-column">
+          <div class="section-heading">
+            <h2>Preview</h2>
+            <span id="preview-label">static services only</span>
+          </div>
+          <div id="preview-panel" class="preview-panel">
+            <div class="empty-state">No static preview available.</div>
+          </div>
+
+          <div class="section-heading manifest-heading">
+            <h2>Manifest</h2>
+          </div>
+          <pre id="manifest-output" class="manifest-output">{}</pre>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

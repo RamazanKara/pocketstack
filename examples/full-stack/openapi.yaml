@@ -1,0 +1,15 @@
+openapi: 3.0.0
+info:
+  title: Full stack demo API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              example:
+                ok: true
+                service: api

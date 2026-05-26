@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: PocketStack Catalog API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              example:
+                status: ok
+  /products/{id}:
+    get:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              example:
+                id: demo
+                name: Browser-native backpack
+                price: 42

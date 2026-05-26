@@ -1,13 +1,16 @@
 package staticdemo
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -37,6 +40,7 @@ type Manifest struct {
 	Mode             string                   `json:"mode"`
 	BrowserOnly      bool                     `json:"browserOnly"`
 	ComposeFile      string                   `json:"composeFile"`
+	StorageNamespace string                   `json:"storageNamespace"`
 	HostRequirements compose.HostRequirements `json:"hostRequirements,omitempty"`
 	Warnings         []string                 `json:"warnings,omitempty"`
 	Services         []ManifestService        `json:"services"`
@@ -92,13 +96,14 @@ func Generate(options Options) (*Result, error) {
 		Mode:             analysis.Mode,
 		BrowserOnly:      true,
 		ComposeFile:      analysis.ComposeFile,
+		StorageNamespace: demoStorageNamespace(analysis.ComposeFile),
 		HostRequirements: analysis.HostRequirements,
 		Warnings:         analysis.Warnings,
 		Services:         make([]ManifestService, 0, len(analysis.Services)),
 	}
 
 	for _, service := range analysis.Services {
-		manifestService, err := copyServiceAssets(assetsDir, service)
+		manifestService, err := copyServiceAssets(assetsDir, service, manifest.StorageNamespace)
 		if err != nil {
 			return nil, err
 		}
@@ -114,14 +119,14 @@ func Generate(options Options) (*Result, error) {
 	if err := writeRuntime(options.OutputDir); err != nil {
 		return nil, err
 	}
-	if err := writeHeaders(options.OutputDir, manifest.HostRequirements); err != nil {
+	if err := writeHostConfigs(options.OutputDir, manifest.HostRequirements); err != nil {
 		return nil, err
 	}
 
 	return &Result{OutputDir: options.OutputDir, Mode: analysis.Mode, Manifest: manifest}, nil
 }
 
-func copyServiceAssets(assetsDir string, service compose.ServiceAnalysis) (ManifestService, error) {
+func copyServiceAssets(assetsDir string, service compose.ServiceAnalysis, storageNamespace string) (ManifestService, error) {
 	serviceDir := filepath.Join(assetsDir, service.Name)
 	manifestService := ManifestService{
 		Name:             service.Name,
@@ -132,6 +137,9 @@ func copyServiceAssets(assetsDir string, service compose.ServiceAnalysis) (Manif
 		Config:           cloneMap(service.Config),
 		Warnings:         service.Warnings,
 		HostRequirements: service.HostRequirements,
+	}
+	if service.Adapter == compose.AdapterPostgresPGlite || service.Adapter == compose.AdapterSQLite {
+		manifestService.Config["storageNamespace"] = storageNamespace
 	}
 	for _, asset := range service.Assets {
 		targetRel := filepath.ToSlash(filepath.Join("assets", service.Name, asset.Target))
@@ -144,12 +152,34 @@ func copyServiceAssets(assetsDir string, service compose.ServiceAnalysis) (Manif
 		}
 		switch asset.Kind {
 		case "directory":
-			files, err := copyTree(asset.Source, targetAbs)
+			files, err := copyDirectoryAsset(asset, targetAbs)
+			if err != nil {
+				return manifestService, fmt.Errorf("copy %s assets for %s: %w", asset.Name, service.Name, err)
+			}
+			manifestAsset.Files = files
+		case "sql-directory":
+			files, err := copyTreeFiltered(asset.Source, targetAbs, func(rel string, entry os.DirEntry) bool {
+				return strings.EqualFold(filepath.Ext(rel), ".sql")
+			})
+			if err != nil {
+				return manifestService, fmt.Errorf("copy %s assets for %s: %w", asset.Name, service.Name, err)
+			}
+			manifestAsset.Files = files
+		case "json-directory":
+			files, err := copyTreeFiltered(asset.Source, targetAbs, func(rel string, entry os.DirEntry) bool {
+				return strings.EqualFold(filepath.Ext(rel), ".json")
+			})
 			if err != nil {
 				return manifestService, fmt.Errorf("copy %s assets for %s: %w", asset.Name, service.Name, err)
 			}
 			manifestAsset.Files = files
 		case "file":
+			if asset.Name == "static" {
+				if err := copyStaticFile(asset.Source, targetAbs, staticAssetRel(asset.Target)); err != nil {
+					return manifestService, fmt.Errorf("copy %s asset for %s: %w", asset.Name, service.Name, err)
+				}
+				break
+			}
 			if err := copyFile(asset.Source, targetAbs); err != nil {
 				return manifestService, fmt.Errorf("copy %s asset for %s: %w", asset.Name, service.Name, err)
 			}
@@ -176,11 +206,51 @@ func copyServiceAssets(assetsDir string, service compose.ServiceAnalysis) (Manif
 			manifestService.Config["fixturesIndex"] = strings.Join(manifestAsset.Files, "\n")
 		case "init":
 			manifestService.Config["initPath"] = targetRel
+		case "init-script":
+			appendConfigPaths(manifestService.Config, "initScripts", targetRel)
+		case "init-scripts":
+			appendConfigPaths(manifestService.Config, "initScripts", assetPaths(targetRel, manifestAsset.Files)...)
 		case "seed":
 			manifestService.Config["seedPath"] = targetRel
+		case "seed-scripts":
+			appendConfigPaths(manifestService.Config, "seedScripts", assetPaths(targetRel, manifestAsset.Files)...)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(serviceDir, "static", "index.html")); err == nil {
+		manifestService.BrowserPath = filepath.ToSlash(filepath.Join("assets", service.Name, "static", "index.html"))
+	}
 	return manifestService, nil
+}
+
+func assetPaths(base string, files []string) []string {
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, filepath.ToSlash(filepath.Join(base, filepath.FromSlash(file))))
+	}
+	return paths
+}
+
+func appendConfigPaths(config map[string]string, key string, paths ...string) {
+	values := []string{}
+	if existing := strings.TrimSpace(config[key]); existing != "" {
+		values = append(values, strings.Split(existing, "\n")...)
+	}
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path != "" {
+			values = append(values, path)
+		}
+	}
+	config[key] = strings.Join(values, "\n")
+}
+
+func demoStorageNamespace(composeFile string) string {
+	absCompose, err := filepath.Abs(composeFile)
+	if err != nil {
+		absCompose = composeFile
+	}
+	sum := sha256.Sum256([]byte(filepath.ToSlash(filepath.Clean(absCompose))))
+	return "ps-" + hex.EncodeToString(sum[:])[:16]
 }
 
 func unsupportedError(analysis *compose.Analysis) error {
@@ -200,6 +270,29 @@ func unsupportedError(analysis *compose.Analysis) error {
 }
 
 func copyTree(source, destination string) ([]string, error) {
+	return copyTreeFiltered(source, destination, func(string, os.DirEntry) bool {
+		return true
+	})
+}
+
+func copyTreeFiltered(source, destination string, include func(string, os.DirEntry) bool) ([]string, error) {
+	return copyTreeFilteredWithSkip(source, destination, include, skipProjectDir)
+}
+
+func copyDirectoryAsset(asset compose.AssetAnalysis, destination string) ([]string, error) {
+	if asset.Name == "static" {
+		return copyTreeFilteredWithSkipTransform(asset.Source, destination, func(string, os.DirEntry) bool {
+			return true
+		}, nil, staticAssetTransform)
+	}
+	return copyTree(asset.Source, destination)
+}
+
+func copyTreeFilteredWithSkip(source, destination string, include func(string, os.DirEntry) bool, skip func(string) bool) ([]string, error) {
+	return copyTreeFilteredWithSkipTransform(source, destination, include, skip, nil)
+}
+
+func copyTreeFilteredWithSkipTransform(source, destination string, include func(string, os.DirEntry) bool, skip func(string) bool, transform func(string, []byte) []byte) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -212,7 +305,7 @@ func copyTree(source, destination string) ([]string, error) {
 		if rel == "." {
 			return os.MkdirAll(destination, 0o755)
 		}
-		if entry.IsDir() && skipDir(entry.Name()) {
+		if entry.IsDir() && skip != nil && skip(entry.Name()) {
 			return filepath.SkipDir
 		}
 		target := filepath.Join(destination, rel)
@@ -226,7 +319,14 @@ func copyTree(source, destination string) ([]string, error) {
 		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 			return nil
 		}
-		if err := copyFile(path, target); err != nil {
+		if !include(filepath.ToSlash(rel), entry) {
+			return nil
+		}
+		if transform != nil {
+			if err := copyFileTransform(path, target, rel, transform); err != nil {
+				return err
+			}
+		} else if err := copyFile(path, target); err != nil {
 			return err
 		}
 		files = append(files, filepath.ToSlash(rel))
@@ -236,7 +336,19 @@ func copyTree(source, destination string) ([]string, error) {
 	return files, err
 }
 
-func skipDir(name string) bool {
+func copyStaticFile(source, destination, rel string) error {
+	return copyFileTransform(source, destination, rel, staticAssetTransform)
+}
+
+func staticAssetRel(target string) string {
+	rel := strings.TrimPrefix(filepath.ToSlash(target), "static/")
+	if rel == "" || rel == "." {
+		return filepath.Base(target)
+	}
+	return rel
+}
+
+func skipProjectDir(name string) bool {
 	switch name {
 	case ".git", "node_modules", ".pocketstack", "dist", "coverage", ".cache":
 		return true
@@ -267,6 +379,63 @@ func copyFile(source, destination string) error {
 	return err
 }
 
+func copyFileTransform(source, destination, rel string, transform func(string, []byte) []byte) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	if transform != nil {
+		data = transform(filepath.ToSlash(rel), data)
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(destination, data, info.Mode().Perm())
+}
+
+func staticAssetTransform(rel string, data []byte) []byte {
+	ext := strings.ToLower(filepath.Ext(rel))
+	switch ext {
+	case ".html", ".htm", ".css":
+	default:
+		return data
+	}
+	prefix := staticRootRelativePrefix(rel)
+	text := string(data)
+	replacements := []struct {
+		old string
+		new string
+	}{
+		{`="/`, `="` + prefix},
+		{`='/`, `='` + prefix},
+		{`url(/`, `url(` + prefix},
+		{`url("/`, `url("` + prefix},
+		{`url('/`, `url('` + prefix},
+	}
+	for _, replacement := range replacements {
+		text = strings.ReplaceAll(text, replacement.old, replacement.new)
+	}
+	text = strings.ReplaceAll(text, `="`+prefix+`/`, `="//`)
+	text = strings.ReplaceAll(text, `='`+prefix+`/`, `='//`)
+	text = strings.ReplaceAll(text, `url(`+prefix+`/`, `url(//`)
+	text = strings.ReplaceAll(text, `url("`+prefix+`/`, `url("//`)
+	text = strings.ReplaceAll(text, `url('`+prefix+`/`, `url('//`)
+	return []byte(text)
+}
+
+func staticRootRelativePrefix(rel string) string {
+	dir := path.Dir(filepath.ToSlash(rel))
+	if dir == "." || dir == "/" {
+		return "./"
+	}
+	depth := len(strings.Split(strings.Trim(dir, "/"), "/"))
+	return strings.Repeat("../", depth)
+}
+
 func writeJSON(path string, value any) error {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
@@ -293,7 +462,7 @@ func writeRuntime(outputDir string) error {
 	})
 }
 
-func writeHeaders(outputDir string, requirements compose.HostRequirements) error {
+func writeHostConfigs(outputDir string, requirements compose.HostRequirements) error {
 	if !requirements.CrossOriginIsolationRequired {
 		return nil
 	}
@@ -303,7 +472,31 @@ func writeHeaders(outputDir string, requirements compose.HostRequirements) error
 		"  Cross-Origin-Embedder-Policy: require-corp",
 		"",
 	}
-	return os.WriteFile(filepath.Join(outputDir, "_headers"), []byte(strings.Join(lines, "\n")), 0o644)
+	if err := os.WriteFile(filepath.Join(outputDir, "_headers"), []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		return err
+	}
+	headerValues := map[string]string{
+		"Cross-Origin-Embedder-Policy": "require-corp",
+		"Cross-Origin-Opener-Policy":   "same-origin",
+	}
+	vercel := map[string]any{
+		"headers": []map[string]any{
+			{
+				"source": "/(.*)",
+				"headers": []map[string]string{
+					{"key": "Cross-Origin-Opener-Policy", "value": headerValues["Cross-Origin-Opener-Policy"]},
+					{"key": "Cross-Origin-Embedder-Policy", "value": headerValues["Cross-Origin-Embedder-Policy"]},
+				},
+			},
+		},
+	}
+	if err := writeJSON(filepath.Join(outputDir, "vercel.json"), vercel); err != nil {
+		return err
+	}
+	staticWebApp := map[string]any{
+		"globalHeaders": headerValues,
+	}
+	return writeJSON(filepath.Join(outputDir, "staticwebapp.config.json"), staticWebApp)
 }
 
 func writeIndex(path string, manifest Manifest) error {

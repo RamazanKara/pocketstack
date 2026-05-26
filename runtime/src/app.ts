@@ -1,8 +1,23 @@
+import { databaseSQLAssetPaths, sqliteSQLAssetPaths } from "./db-assets";
+import { createWebContainerTree, frontendBridgeOptions, frontendDisplayCommand, frontendEnvironment, isTextProjectFile, splitCommand } from "./frontend-adapter";
+import { mergeMockRoutes, normalizeFixtureRoute, routesFromOpenAPIDocument } from "./mock-routes";
+import { deletePGliteStorage, ensurePGliteBootstrapped, pgliteDataDir } from "./pglite-adapter";
+import { databaseServices, frontendServiceEnvironment } from "./service-urls";
+import { isSQLiteDatabasePath, sqlitePersists, sqliteStorageKey } from "./sqlite-adapter";
+import { WASIExit, createWASIImportObject, createWASIPreviewImports, normalizeEnvironmentRecord, wasmerRunOptions } from "./wasi-preview";
+import { load as loadYAML } from "js-yaml";
+
 const state = {
   manifest: null,
   selected: null,
   webcontainers: new Map(),
+  frontendProcesses: new Map(),
   databases: new Map(),
+  databaseHandles: new Map(),
+  runtimeWorkerRegistration: null,
+  mockRoutes: new Map(),
+  databaseBridgeListening: false,
+  frontendBridgeListening: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -26,30 +41,6 @@ function setDetails(message) {
 
 function asset(service, name) {
   return (service.assets || []).find((item) => item.name === name);
-}
-
-function splitCommand(command) {
-  const parts = [];
-  let current = "";
-  let quote = "";
-  for (const char of command || "") {
-    if ((char === '"' || char === "'") && !quote) {
-      quote = char;
-      continue;
-    }
-    if (char === quote) {
-      quote = "";
-      continue;
-    }
-    if (/\s/.test(char) && !quote) {
-      if (current) parts.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  if (current) parts.push(current);
-  return parts;
 }
 
 async function fetchText(path) {
@@ -77,8 +68,30 @@ function selectService(service) {
   });
   logBox().textContent = "";
   setStatus(`${service.name}: ${service.adapter}`);
-  setDetails(service.image || service.adapter);
+  setDetails(serviceDetails(service));
   renderPreview(service);
+  logServiceWarnings(service);
+}
+
+function serviceDetails(service) {
+  const parts = [service.image || service.adapter];
+  const warningCount = (service.warnings || []).length;
+  if (warningCount > 0) parts.push(`${warningCount} warning${warningCount === 1 ? "" : "s"}`);
+  if (service.hostRequirements?.crossOriginIsolationRequired) parts.push("COOP/COEP required");
+  if (service.hostRequirements?.networkAccessRequired) parts.push("network required");
+  return parts.filter(Boolean).join(" · ");
+}
+
+function logServiceWarnings(service) {
+  for (const warning of service.warnings || []) {
+    log(warning, "warn");
+  }
+  if (service.hostRequirements?.crossOriginIsolationRequired) {
+    log("This service requires cross-origin isolation headers.", "warn");
+  }
+  if (service.hostRequirements?.networkAccessRequired) {
+    log("This service may load public browser runtime packages or npm dependencies.", "warn");
+  }
 }
 
 function renderPreview(service) {
@@ -152,10 +165,16 @@ async function startSelected() {
 async function resetSelected() {
   if (!state.selected) return;
   const service = state.selected;
+  await stopFrontend(service);
   state.databases.delete(service.name);
-  if (service.adapter === "postgres-pglite" || service.adapter === "sqlite") {
-    const prefix = `pocketstack:${service.name}:`;
-    Object.keys(localStorage).filter((key) => key.startsWith(prefix)).forEach((key) => localStorage.removeItem(key));
+  await closeDatabaseHandle(service);
+  if (service.adapter === "sqlite") {
+    await deleteSQLiteSnapshot(service);
+  }
+  if (service.adapter === "postgres-pglite") {
+    if (await deletePGliteStorage(service)) {
+      log("Deleted PGlite IndexedDB database.");
+    }
   }
   logBox().textContent = "";
   renderPreview(service);
@@ -166,6 +185,7 @@ async function startFrontend(service) {
   if (!crossOriginIsolated) {
     log("This host is not cross-origin isolated. WebContainer requires COOP/COEP headers.", "warn");
   }
+  await ensureRuntimeServicesRegistered();
   const project = asset(service, "project");
   if (!project) throw new Error("frontend project asset missing");
   const { WebContainer } = await import("https://esm.sh/@webcontainer/api");
@@ -173,178 +193,331 @@ async function startFrontend(service) {
   if (!container) {
     container = await WebContainer.boot();
     state.webcontainers.set(service.name, container);
-    await container.mount(await webcontainerTree(project));
+    container.on("server-ready", (_port, url) => {
+      const frame = document.createElement("iframe");
+      frame.title = `${service.name} frontend`;
+      frame.src = url;
+      $("#preview").replaceChildren(frame);
+      log(`Frontend server ready at ${url}`);
+    });
+    await container.mount(await createWebContainerTree(
+      project,
+      (file) => readFrontendProjectFile(project, file),
+      frontendBridgeOptions(state.manifest?.services || []),
+    ));
   }
-  container.on("server-ready", (_port, url) => {
-    const frame = document.createElement("iframe");
-    frame.title = `${service.name} frontend`;
-    frame.src = url;
-    $("#preview").replaceChildren(frame);
-    log(`Frontend server ready at ${url}`);
-  });
-  await runContainerCommand(container, service.config.install || "npm install");
-  runContainerCommand(container, service.config.start || "npm run dev -- --host 0.0.0.0");
+  if (state.frontendProcesses.has(service.name)) {
+    log("Frontend dev server is already running.");
+    return;
+  }
+  const env = frontendServiceEnvironment(
+    frontendEnvironment(service.config.env || {}),
+    state.manifest?.services || [],
+    window.location.href,
+  );
+  const install = service.config.install ?? "npm install";
+  if (frontendDisplayCommand(install)) {
+    await runContainerCommand(container, install, { env });
+  } else {
+    log("Skipping separate install because the start command handles dependencies.");
+  }
+  const process = await spawnContainerCommand(container, service.config.start || "npm run dev -- --host 0.0.0.0", { env });
+  state.frontendProcesses.set(service.name, process);
+  process.exit.then((code) => {
+    state.frontendProcesses.delete(service.name);
+    log(`Frontend process exited with code ${code}.`, code === 0 ? "" : "warn");
+  }).catch((error) => log(error.message, "frontend"));
 }
 
-async function webcontainerTree(project) {
-  const root = {};
-  for (const file of project.files || []) {
-    const content = await fetchText(`${project.path}/${file}`);
-    const parts = file.split("/");
-    let cursor = root;
-    for (const part of parts.slice(0, -1)) {
-      cursor[part] ||= { directory: {} };
-      cursor = cursor[part].directory;
-    }
-    cursor[parts.at(-1)] = { file: { contents: content } };
-  }
-  return root;
+async function readFrontendProjectFile(project, file) {
+  const path = `${project.path}/${file}`;
+  if (isTextProjectFile(file)) return fetchText(path);
+  return new Uint8Array(await fetchBytes(path));
 }
 
-async function runContainerCommand(container, command) {
+async function runContainerCommand(container, command, options = {}) {
+  const process = await spawnContainerCommand(container, command, options);
+  if (!process) return 0;
+  const code = await process.exit;
+  if (code !== 0) throw new Error(`${frontendDisplayCommand(command)} exited with code ${code}`);
+  return code;
+}
+
+async function spawnContainerCommand(container, command, options = {}) {
   const [bin, ...args] = splitCommand(command);
   if (!bin) return;
-  log(`$ ${command}`);
-  const process = await container.spawn(bin, args);
+  log(`$ ${frontendDisplayCommand(command)}`);
+  const process = await container.spawn(bin, args, options);
   process.output.pipeTo(new WritableStream({
     write(data) {
       log(String(data).replace(/\n$/, ""));
     },
-  }));
-  return process.exit;
+  })).catch((error) => log(error.message, "frontend"));
+  return process;
+}
+
+async function stopFrontend(service) {
+  const process = state.frontendProcesses.get(service.name);
+  state.frontendProcesses.delete(service.name);
+  if (typeof process?.kill === "function") process.kill();
+  const container = state.webcontainers.get(service.name);
+  state.webcontainers.delete(service.name);
+  if (typeof container?.teardown === "function") await container.teardown();
 }
 
 async function startWASI(service) {
   const module = service.config.modulePath;
   if (!module) throw new Error("WASI module path missing");
-  const bytes = await fetchBytes(module);
+  const bytes = new Uint8Array(await fetchBytes(module));
+  const args = splitCommand(service.config.args || "");
+  const env = normalizeEnvironmentRecord(service.config.env || {});
   try {
-    let instance;
-    const imports = wasiPreview(service, () => instance);
-    const result = await WebAssembly.instantiate(bytes, {
-      wasi_snapshot_preview1: imports,
-      env: {},
-    });
-    const instantiated = result.instance || result;
-    instance = instantiated;
-    const exports = instantiated.exports;
-    if (typeof exports._start === "function") exports._start();
-    log("WASM module instantiated in the browser.");
+    await runWASIPreview(bytes, service, args, env);
   } catch (error) {
-    log("Generic WebAssembly instantiation failed; trying Wasmer JS.", "warn");
-    const wasmer = await import("https://esm.sh/@wasmer/sdk");
-    if (typeof wasmer.init === "function") await wasmer.init();
-    log("Wasmer JS loaded. This module may require runtime-specific WASI bindings.");
-    throw error;
+    if (error instanceof WASIExit) {
+      log(error.message, "wasi");
+      return;
+    }
+    await runWASIWithWasmer(bytes, service, args, env, error);
   }
 }
 
-function wasiPreview(service, getInstance) {
-  const args = splitCommand(service.config.args || "");
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  const errnoSuccess = 0;
-  const errnoInval = 28;
-  function memory() {
-    const instance = getInstance();
-    return instance?.exports?.memory;
+async function runWASIPreview(bytes, service, args, env) {
+  let instance;
+  const imports = createWASIPreviewImports({
+    service,
+    args,
+    env,
+    getInstance: () => instance,
+    log,
+  });
+  const result = await WebAssembly.instantiate(bytes, createWASIImportObject(imports));
+  const instantiated = result.instance || result;
+  instance = instantiated;
+  const exports = instantiated.exports;
+  try {
+    if (typeof exports._start === "function") exports._start();
+    else if (typeof exports._initialize === "function") exports._initialize();
+    else log("WASM module has no _start or _initialize export.", "warn");
+    if (typeof imports.__pocketstack_flush === "function") imports.__pocketstack_flush();
+  } catch (error) {
+    if (!(error instanceof WASIExit)) throw error;
+    log(error.message, "wasi");
   }
-  function view() {
-    const current = memory();
-    if (!current) throw new Error("WASI module does not export memory");
-    return new DataView(current.buffer);
+  log("WASM module instantiated in the browser.");
+}
+
+async function runWASIWithWasmer(bytes, service, args, env, originalError) {
+  log(`Built-in WASI preview failed: ${originalError.message}`, "warn");
+  if (!crossOriginIsolated) {
+    log("Wasmer JS fallback requires COOP/COEP headers for cross-origin isolation.", "warn");
   }
-  function bytes() {
-    const current = memory();
-    if (!current) throw new Error("WASI module does not export memory");
-    return new Uint8Array(current.buffer);
+  const wasmer = await import("https://unpkg.com/@wasmer/sdk@0.10.0/dist/index.mjs");
+  if (typeof wasmer.init === "function") await wasmer.init();
+  if (typeof wasmer.runWasix !== "function") {
+    throw originalError;
   }
-  function writeCString(offset, value) {
-    bytes().set(encoder.encode(`${value}\0`), offset);
+  const instance = await wasmer.runWasix(bytes, wasmerRunOptions(service, args, env));
+  const output = await instance.wait();
+  logMultilineOutput(output.stdout, "");
+  logMultilineOutput(output.stderr, "stderr");
+  if (!output.ok) {
+    throw new Error(`Wasmer JS exited with code ${output.code}`);
   }
-  return {
-    args_sizes_get(argc, argvBufSize) {
-      const currentView = view();
-      currentView.setUint32(argc, args.length, true);
-      currentView.setUint32(argvBufSize, args.reduce((size, arg) => size + encoder.encode(arg).length + 1, 0), true);
-      return errnoSuccess;
-    },
-    args_get(argv, argvBuf) {
-      const currentView = view();
-      let offset = argvBuf;
-      args.forEach((arg, index) => {
-        currentView.setUint32(argv + index * 4, offset, true);
-        writeCString(offset, arg);
-        offset += encoder.encode(arg).length + 1;
-      });
-      return errnoSuccess;
-    },
-    environ_sizes_get(environCount, environBufSize) {
-      const currentView = view();
-      currentView.setUint32(environCount, 0, true);
-      currentView.setUint32(environBufSize, 0, true);
-      return errnoSuccess;
-    },
-    environ_get() {
-      return errnoSuccess;
-    },
-    fd_write(fd, iovs, iovsLen, nwritten) {
-      try {
-        const currentView = view();
-        const currentBytes = bytes();
-        let written = 0;
-        let output = "";
-        for (let index = 0; index < iovsLen; index += 1) {
-          const pointer = currentView.getUint32(iovs + index * 8, true);
-          const length = currentView.getUint32(iovs + index * 8 + 4, true);
-          output += decoder.decode(currentBytes.slice(pointer, pointer + length));
-          written += length;
-        }
-        currentView.setUint32(nwritten, written, true);
-        if (fd === 1 || fd === 2) {
-          output.split(/\n/).filter(Boolean).forEach((line) => log(line, fd === 2 ? "stderr" : ""));
-        }
-        return errnoSuccess;
-      } catch (error) {
-        log(error.message, "wasi");
-        return errnoInval;
-      }
-    },
-    fd_close() {
-      return errnoSuccess;
-    },
-    fd_fdstat_get() {
-      return errnoSuccess;
-    },
-    fd_seek() {
-      return errnoSuccess;
-    },
-    random_get(pointer, length) {
-      crypto.getRandomValues(bytes().subarray(pointer, pointer + length));
-      return errnoSuccess;
-    },
-    clock_time_get(_clockId, _precision, timestamp) {
-      const now = BigInt(Date.now()) * 1000000n;
-      view().setBigUint64(timestamp, now, true);
-      return errnoSuccess;
-    },
-    proc_exit(code) {
-      log(`WASI process exited with code ${code}`);
-    },
-  };
+  log(`Wasmer JS ran the WASI module with exit code ${output.code}.`);
+}
+
+function logMultilineOutput(output, tone) {
+  for (const line of String(output || "").replace(/\r\n/g, "\n").split("\n")) {
+    if (line !== "") log(line, tone);
+  }
 }
 
 async function startMock(service) {
+  await ensureRuntimeServicesRegistered();
+  const routes = state.mockRoutes.get(service.name) || [];
+  log(`Registered ${routes.length} mock route(s).`);
+  renderMockRoutes(service, routes);
+}
+
+async function ensureRuntimeServicesRegistered() {
+  if (!runtimeWorkerNeeded()) return;
   if (!("serviceWorker" in navigator)) {
     throw new Error("This browser does not support service workers.");
   }
-  const registration = await navigator.serviceWorker.register("./mock-sw.js", { scope: "./" });
-  await navigator.serviceWorker.ready;
-  const routes = await loadFixtureRoutes(service);
-  const worker = registration.active || navigator.serviceWorker.controller || registration.waiting || registration.installing;
-  if (worker) worker.postMessage({ type: "POCKETSTACK_ROUTES", service: service.name, routes });
-  log(`Registered ${routes.length} mock route(s).`);
-  renderMockRoutes(service, routes);
+  installDatabaseBridgeHandler();
+  if (!state.runtimeWorkerRegistration) {
+    state.runtimeWorkerRegistration = await navigator.serviceWorker.register("./mock-sw.js", { scope: "./" });
+  }
+  const registration = await navigator.serviceWorker.ready;
+  const worker = registration.active || navigator.serviceWorker.controller || state.runtimeWorkerRegistration.active;
+  if (!worker) throw new Error("PocketStack service worker is not active yet.");
+  await registerMockRoutes(worker);
+}
+
+function runtimeWorkerNeeded() {
+  const services = state.manifest?.services || [];
+  return services.some((service) => service.adapter === "mock-http")
+    || databaseServices(services).length > 0;
+}
+
+async function registerMockRoutes(worker) {
+  const services = (state.manifest?.services || []).filter((service) => service.adapter === "mock-http");
+  for (const service of services) {
+    let routes = state.mockRoutes.get(service.name);
+    if (!routes) {
+      routes = await loadMockRoutes(service);
+      state.mockRoutes.set(service.name, routes);
+      log(`Loaded ${routes.length} mock route(s) for ${service.name}.`, "mock");
+    }
+    worker.postMessage({ type: "POCKETSTACK_ROUTES", service: service.name, routes });
+  }
+}
+
+function installDatabaseBridgeHandler() {
+  if (state.databaseBridgeListening || !("serviceWorker" in navigator)) return;
+  state.databaseBridgeListening = true;
+  navigator.serviceWorker.addEventListener("message", async (event) => {
+    if (!event.data || event.data.type !== "POCKETSTACK_DB_QUERY") return;
+    const port = event.ports?.[0];
+    if (!port) return;
+    try {
+      const result = await queryDatabaseService(event.data.service, event.data.sql);
+      port.postMessage({ ok: true, result });
+    } catch (error) {
+      port.postMessage({ ok: false, error: error.message || String(error) });
+    }
+  });
+}
+
+function installFrontendBridgeHandler() {
+  if (state.frontendBridgeListening) return;
+  state.frontendBridgeListening = true;
+  window.addEventListener("message", async (event) => {
+    if (!event.data || event.data.type !== "POCKETSTACK_BRIDGE_FETCH") return;
+    try {
+      const response = await fetchFrontendBridgeTarget(event.data);
+      event.source?.postMessage({
+        type: "POCKETSTACK_BRIDGE_RESPONSE",
+        id: event.data.id,
+        ok: true,
+        response,
+      }, "*");
+    } catch (error) {
+      event.source?.postMessage({
+        type: "POCKETSTACK_BRIDGE_RESPONSE",
+        id: event.data.id,
+        ok: false,
+        error: error.message || String(error),
+      }, "*");
+    }
+  });
+}
+
+async function fetchFrontendBridgeTarget(request) {
+  const target = frontendBridgeTargetURL(request.url);
+  if (!target) throw new Error(`PocketStack bridge cannot proxy ${request.url}`);
+  await ensureRuntimeServicesRegistered();
+  const method = request.method || "GET";
+  const init = {
+    method,
+    headers: request.headers || [],
+  };
+  if (method !== "GET" && method !== "HEAD") init.body = request.body || "";
+  const response = await fetch(target, init);
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    headers: [...response.headers.entries()],
+    body: await response.text(),
+  };
+}
+
+function frontendBridgeTargetURL(rawURL) {
+  let url;
+  try {
+    url = new URL(rawURL, window.location.href);
+  } catch {
+    return "";
+  }
+  const pathTarget = frontendBridgePathTarget(url);
+  if (pathTarget) return pathTarget;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+  const service = (state.manifest?.services || []).find((item) => (
+    item.name === url.hostname && frontendBridgePortMatches(url, item)
+  ));
+  if (!service) return "";
+  if (service.adapter === "mock-http") {
+    return demoURL(`./__pocketstack/mock/${encodeURIComponent(service.name)}${url.pathname}${url.search}${url.hash}`);
+  }
+  if (service.adapter === "postgres-pglite" || service.adapter === "sqlite") {
+    const path = url.pathname === "/" ? "/query" : url.pathname;
+    return demoURL(`./__pocketstack/db/${encodeURIComponent(service.name)}${path}${url.search}${url.hash}`);
+  }
+  return "";
+}
+
+function frontendBridgePathTarget(url) {
+  for (const marker of ["/__pocketstack/mock/", "/__pocketstack/db/"]) {
+    const index = url.pathname.indexOf(marker);
+    if (index < 0) continue;
+    return demoURL(`.${url.pathname.slice(index)}${url.search}${url.hash}`);
+  }
+  return "";
+}
+
+function frontendBridgePortMatches(url, service) {
+  return !url.port || !service.publicPort || Number(url.port) === Number(service.publicPort);
+}
+
+function demoURL(path) {
+  return new URL(path, window.location.href).toString();
+}
+
+async function queryDatabaseService(name, sql) {
+  const service = (state.manifest?.services || []).find((item) => item.name === name);
+  if (!service || (service.adapter !== "postgres-pglite" && service.adapter !== "sqlite")) {
+    throw new Error(`database service ${name} is not available`);
+  }
+  const query = service.adapter === "postgres-pglite"
+    ? await startPGlite(service, { render: false })
+    : await startSQLite(service, { render: false });
+  return parseQueryOutput(await query(sql));
+}
+
+function parseQueryOutput(output) {
+  if (typeof output !== "string") return output;
+  try {
+    return JSON.parse(output);
+  } catch {
+    return output;
+  }
+}
+
+async function loadMockRoutes(service) {
+  const [openAPIRoutes, fixtureRoutes] = await Promise.all([
+    loadOpenAPIRoutes(service),
+    loadFixtureRoutes(service),
+  ]);
+  return mergeMockRoutes(openAPIRoutes, fixtureRoutes);
+}
+
+async function loadOpenAPIRoutes(service) {
+  const openAPIPath = service.config.openapiPath;
+  if (!openAPIPath) return [];
+  const raw = await fetchText(openAPIPath);
+  const document = await parseOpenAPI(raw, openAPIPath);
+  const routes = routesFromOpenAPIDocument(document);
+  log(`Loaded ${routes.length} OpenAPI route(s).`, "mock");
+  return routes;
+}
+
+async function parseOpenAPI(raw, path) {
+  const trimmed = raw.trim();
+  if (path.endsWith(".json") || trimmed.startsWith("{")) {
+    return JSON.parse(trimmed);
+  }
+  return loadYAML(raw);
 }
 
 async function loadFixtureRoutes(service) {
@@ -354,13 +527,10 @@ async function loadFixtureRoutes(service) {
   for (const file of fixtures.files || []) {
     if (!file.endsWith(".json")) continue;
     const payload = JSON.parse(await fetchText(`${fixtures.path}/${file}`));
-    routes.push({
-      method: (payload.method || "GET").toUpperCase(),
+    routes.push(normalizeFixtureRoute({
+      ...payload,
       path: payload.path || `/${file.replace(/\.json$/, "")}`,
-      status: payload.status || 200,
-      headers: payload.headers || { "content-type": "application/json" },
-      body: payload.body ?? payload,
-    });
+    }));
   }
   return routes;
 }
@@ -369,8 +539,9 @@ function renderMockRoutes(service, routes) {
   const panel = document.createElement("section");
   panel.className = "panel";
   panel.innerHTML = `<h2>${service.name}</h2>${routes.map((route) => {
-    const url = mockRouteURL(service, route.path);
-    return `<p><code>${route.method} ${url}</code> <button type="button" data-try="${url}">Try</button></p>`;
+    const displayPath = routePathWithQuery(route);
+    const url = mockRouteURL(service, samplePath(displayPath));
+    return `<p><code>${route.method} ${mockRouteURL(service, displayPath)}</code> <button type="button" data-try="${url}">Try</button></p>`;
   }).join("")}<pre style="height:auto;min-height:120px"></pre>`;
   const output = panel.querySelector("pre");
   panel.querySelectorAll("[data-try]").forEach((button) => {
@@ -382,67 +553,155 @@ function renderMockRoutes(service, routes) {
   $("#preview").replaceChildren(panel);
 }
 
+function samplePath(path) {
+  return path.replace(/\{[^/]+\}/g, "sample");
+}
+
+function routePathWithQuery(route) {
+  return `${route.path}${route.query ? `?${route.query}` : ""}`;
+}
+
 function mockRouteURL(service, path) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `./__pocketstack/mock/${encodeURIComponent(service.name)}${normalizedPath}`;
 }
 
-async function startPGlite(service) {
+async function startPGlite(service, options = {}) {
+  const render = options.render !== false;
   if (state.databases.has(service.name)) {
-    renderQueryPanel(service, state.databases.get(service.name));
-    return;
+    const query = state.databases.get(service.name);
+    if (render) renderQueryPanel(service, query);
+    return query;
   }
   const { PGlite } = await import("https://cdn.jsdelivr.net/npm/@electric-sql/pglite/dist/index.js");
-  const persist = service.config.persist === "memory" ? "memory://" : `idb://pocketstack-${service.name}`;
-  const db = new PGlite(persist);
-  await executeSQLAssets(db, service);
+  const db = new PGlite(pgliteDataDir(service));
+  const bootstrapped = await ensurePGliteBootstrapped(db, () => executeSQLAssets(db, service), log);
+  if (!bootstrapped) log("Loaded persisted PGlite database.");
   log("PGlite database initialized.");
   const query = async (sql) => {
     const rows = await db.query(sql);
     return JSON.stringify(rows.rows || rows, null, 2);
   };
   state.databases.set(service.name, query);
-  renderQueryPanel(service, query);
+  state.databaseHandles.set(service.name, db);
+  if (render) renderQueryPanel(service, query);
+  return query;
 }
 
-async function startSQLite(service) {
+async function startSQLite(service, options = {}) {
+  const render = options.render !== false;
   if (state.databases.has(service.name)) {
-    renderQueryPanel(service, state.databases.get(service.name));
-    return;
+    const query = state.databases.get(service.name);
+    if (render) renderQueryPanel(service, query);
+    return query;
   }
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js");
   const SQL = await window.initSqlJs({
     locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`,
   });
-  const db = new SQL.Database();
-  await executeSQLiteAssets(db, service);
+  const opened = await openSQLiteDatabase(SQL, service);
+  const db = opened.db;
+  if (!opened.restored) {
+    await executeSQLiteAssets(db, service);
+  }
   log("SQLite database initialized.");
   const query = async (sql) => {
     const result = db.exec(sql);
+    await saveSQLiteSnapshot(service, db);
     return JSON.stringify(result, null, 2);
   };
   state.databases.set(service.name, query);
-  renderQueryPanel(service, query);
+  state.databaseHandles.set(service.name, db);
+  if (render) renderQueryPanel(service, query);
+  return query;
+}
+
+async function closeDatabaseHandle(service) {
+  const handle = state.databaseHandles.get(service.name);
+  state.databaseHandles.delete(service.name);
+  if (typeof handle?.close === "function") {
+    await handle.close();
+  }
+}
+
+async function openSQLiteDatabase(SQL, service) {
+  const persisted = await loadSQLiteSnapshot(service);
+  if (persisted) {
+    log("Loaded SQLite snapshot from IndexedDB.");
+    return { db: new SQL.Database(persisted), restored: true };
+  }
+  const seedPath = service.config.seedPath || "";
+  if (isSQLiteDatabasePath(seedPath)) {
+    const bytes = new Uint8Array(await fetchBytes(seedPath));
+    log("Loaded SQLite seed database.");
+    return { db: new SQL.Database(bytes), restored: false };
+  }
+  return { db: new SQL.Database(), restored: false };
 }
 
 async function executeSQLAssets(db, service) {
-  for (const key of ["initPath", "seedPath"]) {
-    if (service.config[key]) {
-      const sql = await fetchText(service.config[key]);
-      if (sql.trim()) await db.exec(sql);
-      log(`Executed ${key}.`);
-    }
+  for (const path of databaseSQLAssetPaths(service)) {
+    const sql = await fetchText(path);
+    if (sql.trim()) await db.exec(sql);
+    log(`Executed ${path}.`);
   }
 }
 
 async function executeSQLiteAssets(db, service) {
-  for (const key of ["initPath", "seedPath"]) {
-    if (service.config[key]) {
-      const sql = await fetchText(service.config[key]);
-      if (sql.trim()) db.run(sql);
-      log(`Executed ${key}.`);
-    }
+  for (const path of sqliteSQLAssetPaths(service, isSQLiteDatabasePath)) {
+    const sql = await fetchText(path);
+    if (sql.trim()) db.run(sql);
+    log(`Executed ${path}.`);
   }
+  await saveSQLiteSnapshot(service, db);
+}
+
+async function loadSQLiteSnapshot(service) {
+  if (!sqlitePersists(service)) return null;
+  const value = await sqliteStoreRequest("readonly", (store) => store.get(sqliteStorageKey(service)));
+  if (!value) return null;
+  return value instanceof Uint8Array ? value : new Uint8Array(value);
+}
+
+async function saveSQLiteSnapshot(service, db) {
+  if (!sqlitePersists(service)) return;
+  const snapshot = db.export();
+  await sqliteStoreRequest("readwrite", (store) => store.put(snapshot, sqliteStorageKey(service)));
+}
+
+async function deleteSQLiteSnapshot(service) {
+  if (!sqlitePersists(service)) return;
+  await sqliteStoreRequest("readwrite", (store) => store.delete(sqliteStorageKey(service)));
+  log("Deleted SQLite IndexedDB snapshot.");
+}
+
+function sqliteStoreRequest(mode, createRequest) {
+  if (!("indexedDB" in globalThis)) {
+    log("IndexedDB is not available; SQLite persistence is disabled.", "warn");
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open("pocketstack-sqlite", 1);
+    open.onupgradeneeded = () => {
+      if (!open.result.objectStoreNames.contains("databases")) {
+        open.result.createObjectStore("databases");
+      }
+    };
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const database = open.result;
+      const transaction = database.transaction("databases", mode);
+      const store = transaction.objectStore("databases");
+      const request = createRequest(store);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => database.close();
+      transaction.onabort = () => {
+        database.close();
+        reject(transaction.error);
+      };
+    };
+  });
 }
 
 function renderQueryPanel(service, runQuery) {
@@ -475,6 +734,16 @@ async function init() {
   state.manifest = await loadManifest();
   if (state.manifest.warnings?.length) {
     state.manifest.warnings.forEach((warning) => log(warning, "warn"));
+  }
+  globalThis.PocketStack = {
+    query: queryDatabaseService,
+    services: state.manifest.services,
+  };
+  installFrontendBridgeHandler();
+  try {
+    await ensureRuntimeServicesRegistered();
+  } catch (error) {
+    log(`PocketStack service worker is not active yet: ${error.message}`, "warn");
   }
   document.querySelectorAll("[data-service]").forEach((button) => {
     button.addEventListener("click", () => {

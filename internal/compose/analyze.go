@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -33,6 +34,9 @@ const (
 	LabelDBInit           = "pocketstack.db.init"
 	LabelDBSeed           = "pocketstack.db.seed"
 	LabelDBPersist        = "pocketstack.db.persist"
+
+	envFileEmbeddingWarning = "env_file values are embedded in the static demo; do not include secrets."
+	postgresInitTarget      = "/docker-entrypoint-initdb.d"
 )
 
 type Analysis struct {
@@ -149,6 +153,15 @@ func analyzeService(name string, service Service, projectRoot string) ServiceAna
 		Explicit:    explicit,
 	}
 	if explicit != "" {
+		if !supportedExplicitAdapter(explicit) {
+			result := baseServiceAnalysis(context, AdapterUnsupported)
+			if explicit == AdapterStaticWeb {
+				result.reject("static-web is autodetected; do not set pocketstack.adapter=static-web")
+			} else {
+				result.reject(fmt.Sprintf("unknown PocketStack adapter %q", explicit))
+			}
+			return result
+		}
 		for _, current := range adapters() {
 			if current.Name() == explicit {
 				return current.Analyze(context)
@@ -176,6 +189,15 @@ func analyzeService(name string, service Service, projectRoot string) ServiceAna
 		result.reject("no browser adapter matched this service")
 	}
 	return result
+}
+
+func supportedExplicitAdapter(name string) bool {
+	switch name {
+	case AdapterFrontend, AdapterWASI, AdapterMockHTTP, AdapterPostgresPGlite, AdapterSQLite:
+		return true
+	default:
+		return false
+	}
 }
 
 func adapters() []adapter {
@@ -216,23 +238,72 @@ func (staticWebAdapter) Analyze(context adapterContext) ServiceAnalysis {
 		result.reject(fmt.Sprintf("image %q is not in the static-web allowlist", service.Image))
 	}
 	staticTargets := staticTargetsForImage(service.Image)
+	configTargets := configTargetsForImage(service.Image)
+	var ignoredConfigMounts []string
+	staticAssetCount := 0
 	for _, volume := range service.Volumes {
-		if !volume.IsBindLike() || !contains(staticTargets, volume.Target) {
+		if volume.IsBindLike() && matchesStaticConfigTarget(configTargets, volume.Target) {
+			ignoredConfigMounts = append(ignoredConfigMounts, volume.Target)
+		}
+		if !volume.IsBindLike() {
 			continue
 		}
 		source := volume.ResolveSource(context.ProjectRoot)
-		if isDir(source) {
-			result.StaticRoot = volume.Target
-			result.AssetSource = source
-			result.addAsset("static", "directory", source, "static")
-			break
+		staticRoot, rel, ok := staticDocumentMount(staticTargets, volume.Target)
+		if !ok {
+			continue
+		}
+		target := staticAssetTarget(source, rel)
+		switch {
+		case isDir(source):
+			if result.AssetSource == "" {
+				result.StaticRoot = staticRoot
+				result.AssetSource = source
+			}
+			result.addAsset("static", "directory", source, target)
+			staticAssetCount++
+		case fileExists(source):
+			if result.AssetSource == "" {
+				result.StaticRoot = staticRoot
+				result.AssetSource = source
+			}
+			result.addAsset("static", "file", source, target)
+			staticAssetCount++
+		default:
+			result.reject(fmt.Sprintf("static asset source %s does not exist", source))
 		}
 	}
-	if result.AssetSource == "" {
-		result.reject("no local static asset directory is mounted at the image's document root")
+	if staticAssetCount == 0 {
+		result.reject("no local static asset file or directory is mounted at the image's document root")
+	}
+	if len(ignoredConfigMounts) > 0 {
+		sort.Strings(ignoredConfigMounts)
+		result.Config["ignoredConfigMounts"] = strings.Join(ignoredConfigMounts, "\n")
+		result.Warnings = append(result.Warnings, "static-web packages document-root files only; mounted nginx/httpd/caddy config is not emulated, so redirects, rewrites, custom headers, auth, and compression may differ.")
 	}
 	result.PublicPort = firstPort(service, defaultPortForImage(service.Image))
 	return result
+}
+
+func staticDocumentMount(staticTargets []string, target string) (string, string, bool) {
+	for _, staticTarget := range staticTargets {
+		rel, ok := containerRelativePath(staticTarget, target)
+		if ok {
+			return cleanContainerPath(staticTarget), rel, true
+		}
+	}
+	return "", "", false
+}
+
+func staticAssetTarget(source, rel string) string {
+	rel = strings.TrimSpace(rel)
+	if rel == "" || rel == "." {
+		if fileExists(source) {
+			return filepath.ToSlash(filepath.Join("static", filepath.Base(source)))
+		}
+		return "static"
+	}
+	return filepath.ToSlash(filepath.Join("static", filepath.FromSlash(rel)))
 }
 
 type frontendAdapter struct{}
@@ -252,36 +323,38 @@ func (frontendAdapter) Analyze(context adapterContext) ServiceAnalysis {
 	if context.Explicit == "" && !isFrontendImage(service.Image) {
 		result.reject(fmt.Sprintf("image %q is not a Node/Bun frontend image", service.Image))
 	}
-	source := firstBindWithFile(context.ProjectRoot, service.Volumes, "package.json")
-	if source == "" && fileExists(filepath.Join(context.ProjectRoot, "package.json")) {
-		source = context.ProjectRoot
-	}
+	source := frontendSource(context.ProjectRoot, service, "package.json")
 	if source == "" {
-		result.reject("frontend adapter requires a package.json in a bind-mounted source directory")
+		result.reject("frontend adapter requires a package.json in the project root or a bind-mounted source directory")
 		return result
 	}
-	scripts, err := packageScripts(filepath.Join(source, "package.json"))
+	metadata, err := packageMetadata(filepath.Join(source, "package.json"))
 	if err != nil {
 		result.reject(err.Error())
 		return result
 	}
-	install := labelDefault(context.Labels, LabelFrontendInstall, defaultInstallCommand(source))
-	start := strings.TrimSpace(context.Labels[LabelFrontendStart])
+	manager := detectPackageManager(source, service.Image, metadata.PackageManager)
+	start := frontendStartCommand(context.Labels, service.Entrypoint, service.Command)
 	if start == "" {
 		switch {
-		case scripts["dev"] != "":
-			start = "npm run dev -- --host 0.0.0.0"
-		case scripts["start"] != "":
-			start = "npm start -- --host 0.0.0.0"
+		case metadata.Scripts["dev"] != "":
+			start = defaultRunCommand(manager, "dev")
+		case metadata.Scripts["start"] != "":
+			start = defaultRunCommand(manager, "start")
 		default:
 			result.reject("frontend adapter requires a dev/start script or pocketstack.frontend.start label")
 		}
 	}
+	install := frontendInstallCommand(context.Labels, source, manager, start)
 	result.AssetSource = source
 	result.PublicPort = labelInt(context.Labels, LabelFrontendPort, firstPort(service, 3000))
 	result.Config["install"] = install
 	result.Config["start"] = start
 	result.Config["port"] = strconv.Itoa(result.PublicPort)
+	result.Config["packageManager"] = manager
+	if env, ok := browserEnvironment(context.ProjectRoot, service, &result); ok && len(env) > 0 {
+		result.Config["env"] = strings.Join(env, "\n")
+	}
 	result.addAsset("project", "directory", source, "project")
 	result.HostRequirements = HostRequirements{
 		CrossOriginIsolationRequired: true,
@@ -292,6 +365,23 @@ func (frontendAdapter) Analyze(context adapterContext) ServiceAnalysis {
 		},
 	}
 	return result
+}
+
+func frontendStartCommand(labels map[string]string, entrypoint, composeCommand any) string {
+	if start := strings.TrimSpace(labels[LabelFrontendStart]); start != "" {
+		return start
+	}
+	return composeEntrypointCommandString(entrypoint, composeCommand)
+}
+
+func frontendInstallCommand(labels map[string]string, source, manager, start string) string {
+	if install := strings.TrimSpace(labels[LabelFrontendInstall]); install != "" {
+		return install
+	}
+	if frontendCommandInstallsDependencies(start) {
+		return ""
+	}
+	return defaultInstallCommand(source, manager)
 }
 
 type wasiAdapter struct{}
@@ -316,8 +406,18 @@ func (wasiAdapter) Analyze(context adapterContext) ServiceAnalysis {
 		result.reject(fmt.Sprintf("WASI module %s does not exist", module))
 	}
 	result.Config["args"] = context.Labels[LabelWASIArgs]
+	if env, ok := browserEnvironment(context.ProjectRoot, context.Service, &result); ok && len(env) > 0 {
+		result.Config["env"] = strings.Join(env, "\n")
+	}
 	result.addAsset("module", "file", module, "module.wasm")
-	result.HostRequirements.NetworkAccessRequired = true
+	result.HostRequirements = HostRequirements{
+		CrossOriginIsolationRequired: true,
+		NetworkAccessRequired:        true,
+		Headers: map[string]string{
+			"Cross-Origin-Embedder-Policy": "require-corp",
+			"Cross-Origin-Opener-Policy":   "same-origin",
+		},
+	}
 	return result
 }
 
@@ -340,14 +440,32 @@ func (mockHTTPAdapter) Analyze(context adapterContext) ServiceAnalysis {
 	if openAPI != "" {
 		if !fileExists(openAPI) {
 			result.reject(fmt.Sprintf("OpenAPI file %s does not exist", openAPI))
+		} else if !isOpenAPIPath(openAPI) {
+			result.reject(fmt.Sprintf("OpenAPI file %s must be .yaml, .yml, or .json", openAPI))
 		}
 		result.addAsset("openapi", "file", openAPI, "openapi"+filepath.Ext(openAPI))
 	}
 	if fixtures != "" {
 		if !isDir(fixtures) {
 			result.reject(fmt.Sprintf("fixtures directory %s does not exist", fixtures))
+		} else {
+			jsonFiles, skipped, err := jsonDirectoryFiles(fixtures)
+			if err != nil {
+				result.reject(fmt.Sprintf("read fixtures directory %s: %v", fixtures, err))
+			} else if len(jsonFiles) == 0 {
+				message := fmt.Sprintf("fixtures directory %s has no .json files PocketStack can serve", fixtures)
+				if openAPI == "" {
+					result.reject(message)
+				} else {
+					result.Warnings = append(result.Warnings, message)
+				}
+			} else {
+				if len(skipped) > 0 {
+					result.Warnings = append(result.Warnings, fmt.Sprintf("fixtures directory %s includes non-.json files that are not served by mock-http.", fixtures))
+				}
+				result.addAsset("fixtures", "json-directory", fixtures, "fixtures")
+			}
 		}
-		result.addAsset("fixtures", "directory", fixtures, "fixtures")
 	}
 	result.PublicPort = labelInt(context.Labels, LabelMockPort, firstPort(context.Service, 8080))
 	result.Config["port"] = strconv.Itoa(result.PublicPort)
@@ -373,10 +491,15 @@ func (postgresAdapter) Analyze(context adapterContext) ServiceAnalysis {
 	if hasValue(context.Service.Command) || hasValue(context.Service.Entrypoint) {
 		result.Warnings = append(result.Warnings, "Postgres command/entrypoint is ignored by the PGlite adapter.")
 	}
+	persist, ok := dbPersistMode(context.Labels, &result)
+	if !ok {
+		return result
+	}
 	result.PublicPort = firstPort(context.Service, 5432)
-	result.Config["persist"] = labelDefault(context.Labels, LabelDBPersist, "indexeddb")
-	addOptionalFile(&result, context.ProjectRoot, context.Labels[LabelDBInit], "init", "init.sql")
-	addOptionalFile(&result, context.ProjectRoot, context.Labels[LabelDBSeed], "seed", "seed.sql")
+	result.Config["persist"] = persist
+	addOptionalSQLPath(&result, context.ProjectRoot, context.Labels[LabelDBInit], "init", "init.sql", false)
+	addOptionalSQLPath(&result, context.ProjectRoot, context.Labels[LabelDBSeed], "seed", "seed.sql", false)
+	addPostgresInitMounts(&result, context.ProjectRoot, context.Service)
 	result.HostRequirements.NetworkAccessRequired = true
 	return result
 }
@@ -391,9 +514,13 @@ func (sqliteAdapter) Analyze(context adapterContext) ServiceAnalysis {
 		result.reject("sqlite adapter requires pocketstack.adapter=sqlite")
 		return result
 	}
-	result.Config["persist"] = labelDefault(context.Labels, LabelDBPersist, "indexeddb")
-	addOptionalFile(&result, context.ProjectRoot, context.Labels[LabelDBInit], "init", "init.sql")
-	addOptionalFile(&result, context.ProjectRoot, context.Labels[LabelDBSeed], "seed", "seed")
+	persist, ok := dbPersistMode(context.Labels, &result)
+	if !ok {
+		return result
+	}
+	result.Config["persist"] = persist
+	addOptionalSQLPath(&result, context.ProjectRoot, context.Labels[LabelDBInit], "init", "init.sql", false)
+	addOptionalSQLPath(&result, context.ProjectRoot, context.Labels[LabelDBSeed], "seed", "seed", true)
 	result.HostRequirements.NetworkAccessRequired = true
 	return result
 }
@@ -440,28 +567,569 @@ func addOptionalFile(result *ServiceAnalysis, projectRoot, rawPath, name, target
 	result.addAsset(name, "file", path, target)
 }
 
-func packageScripts(path string) (map[string]string, error) {
+func addOptionalFilePreserveExt(result *ServiceAnalysis, projectRoot, rawPath, name, targetBase string) {
+	path := resolveProjectPath(projectRoot, rawPath)
+	if path == "" {
+		return
+	}
+	if !fileExists(path) {
+		result.reject(fmt.Sprintf("%s file %s does not exist", name, path))
+		return
+	}
+	target := targetBase
+	if ext := filepath.Ext(path); ext != "" && filepath.Ext(targetBase) == "" {
+		target += ext
+	}
+	result.addAsset(name, "file", path, target)
+}
+
+func addOptionalSQLPath(result *ServiceAnalysis, projectRoot, rawPath, name, targetBase string, preserveExt bool) {
+	path := resolveProjectPath(projectRoot, rawPath)
+	if path == "" {
+		return
+	}
+	if isDir(path) {
+		sqlFiles, skipped, err := sqlDirectoryFiles(path)
+		if err != nil {
+			result.reject(fmt.Sprintf("read %s directory %s: %v", name, path, err))
+			return
+		}
+		if len(sqlFiles) == 0 {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s directory %s has no .sql files PocketStack can execute.", name, path))
+			return
+		}
+		if len(skipped) > 0 {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s directory %s includes non-.sql files that are not executed in browser-only mode.", name, path))
+		}
+		result.addAsset(name+"-scripts", "sql-directory", path, name+"-scripts")
+		return
+	}
+	if !fileExists(path) {
+		result.reject(fmt.Sprintf("%s file %s does not exist", name, path))
+		return
+	}
+	if !validDatabaseAssetFile(path, preserveExt) {
+		result.reject(fmt.Sprintf("%s file %s must be %s", name, path, databaseAssetFileExpectation(preserveExt)))
+		return
+	}
+	target := targetBase
+	if preserveExt {
+		if ext := filepath.Ext(path); ext != "" && filepath.Ext(targetBase) == "" {
+			target += ext
+		}
+	}
+	result.addAsset(name, "file", path, target)
+}
+
+func addPostgresInitMounts(result *ServiceAnalysis, projectRoot string, service Service) {
+	for _, volume := range service.Volumes {
+		if !volume.IsBindLike() {
+			continue
+		}
+		rel, ok := containerRelativePath(postgresInitTarget, volume.Target)
+		if !ok {
+			continue
+		}
+		source := volume.ResolveSource(projectRoot)
+		if source == "" {
+			continue
+		}
+		switch {
+		case isDir(source):
+			sqlFiles, skipped, err := sqlDirectoryFiles(source)
+			if err != nil {
+				result.reject(fmt.Sprintf("read Postgres init mount %s: %v", source, err))
+				continue
+			}
+			if len(sqlFiles) == 0 {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Postgres init mount %s has no .sql files PocketStack can execute.", source))
+			} else {
+				result.addAsset("init-scripts", "sql-directory", source, postgresInitAssetTarget(rel))
+			}
+			if len(skipped) > 0 {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Postgres init mount %s includes non-.sql files that are not executed in browser-only mode.", source))
+			}
+		case fileExists(source):
+			target := postgresInitFileTarget(source, rel)
+			if !isSQLPath(source) && !isSQLPath(target) {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Postgres init file %s is not .sql and is not executed in browser-only mode.", source))
+				continue
+			}
+			result.addAsset("init-script", "file", source, filepath.ToSlash(filepath.Join("init-scripts", filepath.FromSlash(target))))
+		default:
+			result.reject(fmt.Sprintf("Postgres init mount source %s does not exist", source))
+		}
+	}
+}
+
+func postgresInitAssetTarget(rel string) string {
+	if rel == "." || rel == "" {
+		return "init-scripts"
+	}
+	return filepath.ToSlash(filepath.Join("init-scripts", filepath.FromSlash(rel)))
+}
+
+func postgresInitFileTarget(source, rel string) string {
+	if rel == "." || rel == "" {
+		return filepath.Base(source)
+	}
+	return rel
+}
+
+func sqlDirectoryFiles(source string) ([]string, []string, error) {
+	var sqlFiles []string
+	var skipped []string
+	err := filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if entry.IsDir() && skipProjectDir(entry.Name()) {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if isSQLPath(rel) {
+			sqlFiles = append(sqlFiles, rel)
+		} else {
+			skipped = append(skipped, rel)
+		}
+		return nil
+	})
+	sort.Strings(sqlFiles)
+	sort.Strings(skipped)
+	return sqlFiles, skipped, err
+}
+
+func jsonDirectoryFiles(source string) ([]string, []string, error) {
+	var jsonFiles []string
+	var skipped []string
+	err := filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if entry.IsDir() && skipProjectDir(entry.Name()) {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if isJSONPath(rel) {
+			jsonFiles = append(jsonFiles, rel)
+		} else {
+			skipped = append(skipped, rel)
+		}
+		return nil
+	})
+	sort.Strings(jsonFiles)
+	sort.Strings(skipped)
+	return jsonFiles, skipped, err
+}
+
+func isOpenAPIPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".yaml", ".yml", ".json":
+		return true
+	default:
+		return false
+	}
+}
+
+func isJSONPath(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".json")
+}
+
+func isSQLPath(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".sql")
+}
+
+func isSQLiteDatabasePath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".db", ".sqlite", ".sqlite3":
+		return true
+	default:
+		return false
+	}
+}
+
+func validDatabaseAssetFile(path string, allowSQLiteDatabase bool) bool {
+	return isSQLPath(path) || (allowSQLiteDatabase && isSQLiteDatabasePath(path))
+}
+
+func databaseAssetFileExpectation(allowSQLiteDatabase bool) string {
+	if allowSQLiteDatabase {
+		return ".sql, .db, .sqlite, or .sqlite3"
+	}
+	return ".sql"
+}
+
+func skipProjectDir(name string) bool {
+	switch name {
+	case ".git", "node_modules", ".pocketstack", "dist", "coverage", ".cache":
+		return true
+	default:
+		return false
+	}
+}
+
+func browserEnvironment(projectRoot string, service Service, result *ServiceAnalysis) ([]string, bool) {
+	values := map[string]string{}
+	usedEnvFile := false
+	for _, envFile := range service.EnvFiles() {
+		envPath := resolveProjectPath(projectRoot, envFile.Path)
+		if envPath == "" {
+			continue
+		}
+		data, err := os.ReadFile(envPath)
+		if err != nil {
+			if envFile.Required {
+				result.reject(fmt.Sprintf("env_file %s does not exist", envPath))
+				return nil, false
+			}
+			result.Warnings = append(result.Warnings, fmt.Sprintf("optional env_file %s does not exist and was skipped", envPath))
+			continue
+		}
+		usedEnvFile = true
+		mergeEnvironment(values, parseEnvFile(string(data), envPath, result))
+	}
+	mergeEnvironment(values, service.EnvironmentList())
+	if usedEnvFile {
+		result.Warnings = append(result.Warnings, envFileEmbeddingWarning)
+	}
+	return sortedEnvironment(values), true
+}
+
+func parseEnvFile(raw, envPath string, result *ServiceAnalysis) []string {
+	entries := []string{}
+	for lineNumber, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		key, value, ok := strings.Cut(line, "=")
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if !ok {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("env_file %s line %d has no value; PocketStack will set it to an empty string instead of reading host environment.", envPath, lineNumber+1))
+			entries = append(entries, key+"=")
+			continue
+		}
+		entries = append(entries, key+"="+trimEnvValue(value))
+	}
+	return entries
+}
+
+func trimEnvValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 {
+		return value
+	}
+	first := value[0]
+	last := value[len(value)-1]
+	if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+		return value[1 : len(value)-1]
+	}
+	return value
+}
+
+func mergeEnvironment(values map[string]string, entries []string) {
+	for _, entry := range entries {
+		key, value, ok := strings.Cut(entry, "=")
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if !ok {
+			value = ""
+		}
+		values[key] = strings.TrimSpace(value)
+	}
+}
+
+func sortedEnvironment(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	env := make([]string, 0, len(keys))
+	for _, key := range keys {
+		env = append(env, key+"="+values[key])
+	}
+	return env
+}
+
+type packageInfo struct {
+	Scripts        map[string]string
+	PackageManager string
+}
+
+func packageMetadata(path string) (packageInfo, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read package.json: %w", err)
+		return packageInfo{}, fmt.Errorf("read package.json: %w", err)
 	}
 	var payload struct {
-		Scripts map[string]string `json:"scripts"`
+		Scripts        map[string]string `json:"scripts"`
+		PackageManager string            `json:"packageManager"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, fmt.Errorf("parse package.json: %w", err)
+		return packageInfo{}, fmt.Errorf("parse package.json: %w", err)
 	}
 	if payload.Scripts == nil {
 		payload.Scripts = map[string]string{}
 	}
-	return payload.Scripts, nil
+	return packageInfo{Scripts: payload.Scripts, PackageManager: payload.PackageManager}, nil
 }
 
-func defaultInstallCommand(source string) string {
+func detectPackageManager(source, image, declared string) string {
+	if manager := normalizePackageManager(declared); manager != "" {
+		return manager
+	}
+	switch {
+	case fileExists(filepath.Join(source, "bun.lockb")) || fileExists(filepath.Join(source, "bun.lock")):
+		return "bun"
+	case fileExists(filepath.Join(source, "pnpm-lock.yaml")):
+		return "pnpm"
+	case fileExists(filepath.Join(source, "yarn.lock")):
+		return "yarn"
+	case fileExists(filepath.Join(source, "package-lock.json")) || fileExists(filepath.Join(source, "npm-shrinkwrap.json")):
+		return "npm"
+	case isBunImage(image):
+		return "bun"
+	default:
+		return "npm"
+	}
+}
+
+func normalizePackageManager(raw string) string {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		return ""
+	}
+	name, _, _ := strings.Cut(raw, "@")
+	switch name {
+	case "npm", "pnpm", "yarn", "bun":
+		return name
+	default:
+		return ""
+	}
+}
+
+func defaultInstallCommand(source, manager string) string {
+	switch manager {
+	case "bun":
+		return "bun install"
+	case "pnpm":
+		return "pnpm install"
+	case "yarn":
+		return "yarn install"
+	}
 	if fileExists(filepath.Join(source, "package-lock.json")) {
 		return "npm ci"
 	}
 	return "npm install"
+}
+
+func frontendCommandInstallsDependencies(command string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(command), " "))
+	if normalized == "" {
+		return false
+	}
+	installCommands := []string{
+		"npm install",
+		"npm i",
+		"npm ci",
+		"pnpm install",
+		"pnpm i",
+		"yarn install",
+		"bun install",
+		"bun i",
+	}
+	for _, current := range installCommands {
+		if commandContainsShellWordSequence(normalized, current) {
+			return true
+		}
+	}
+	return false
+}
+
+func commandContainsShellWordSequence(command, sequence string) bool {
+	index := strings.Index(command, sequence)
+	for index >= 0 {
+		beforeOK := index == 0 || strings.ContainsRune(" \t\n;&|()\"'", rune(command[index-1]))
+		afterIndex := index + len(sequence)
+		afterOK := afterIndex == len(command) || strings.ContainsRune(" \t\n;&|()\"'", rune(command[afterIndex]))
+		if beforeOK && afterOK {
+			return true
+		}
+		next := strings.Index(command[index+1:], sequence)
+		if next < 0 {
+			return false
+		}
+		index += next + 1
+	}
+	return false
+}
+
+func defaultRunCommand(manager, script string) string {
+	if script == "start" {
+		switch manager {
+		case "bun":
+			return "bun run start -- --host 0.0.0.0"
+		case "pnpm":
+			return "pnpm start -- --host 0.0.0.0"
+		case "yarn":
+			return "yarn run start -- --host 0.0.0.0"
+		default:
+			return "npm start -- --host 0.0.0.0"
+		}
+	}
+	switch manager {
+	case "bun":
+		return "bun run " + script + " -- --host 0.0.0.0"
+	case "pnpm":
+		return "pnpm run " + script + " -- --host 0.0.0.0"
+	case "yarn":
+		return "yarn run " + script + " -- --host 0.0.0.0"
+	default:
+		return "npm run " + script + " -- --host 0.0.0.0"
+	}
+}
+
+func composeCommandString(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case []any:
+		parts := make([]string, 0, len(typed))
+		for _, part := range typed {
+			parts = append(parts, fmt.Sprint(part))
+		}
+		return joinCommandParts(parts)
+	case []string:
+		return joinCommandParts(typed)
+	default:
+		return ""
+	}
+}
+
+func composeEntrypointCommandString(entrypoint, command any) string {
+	entrypointText := composeCommandString(entrypoint)
+	commandText := composeCommandString(command)
+	if entrypointText == "" {
+		return commandText
+	}
+	if commandText == "" {
+		return entrypointText
+	}
+	if isCommandList(entrypoint) {
+		if commandString, ok := command.(string); ok {
+			commandText = quoteCommandPart(strings.TrimSpace(commandString))
+		}
+	}
+	return strings.TrimSpace(entrypointText + " " + commandText)
+}
+
+func isCommandList(value any) bool {
+	switch value.(type) {
+	case []any, []string:
+		return true
+	default:
+		return false
+	}
+}
+
+func joinCommandParts(parts []string) string {
+	quoted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		quoted = append(quoted, quoteCommandPart(part))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func quoteCommandPart(part string) string {
+	if !strings.ContainsAny(part, " \t\n\"'") {
+		return part
+	}
+	if !strings.Contains(part, `"`) {
+		return `"` + part + `"`
+	}
+	if !strings.Contains(part, `'`) {
+		return `'` + part + `'`
+	}
+	return strings.ReplaceAll(part, " ", `\ `)
+}
+
+func frontendSource(projectRoot string, service Service, filename string) string {
+	if source := bindSourceForWorkingDir(projectRoot, service.Volumes, service.WorkingDir, filename); source != "" {
+		return source
+	}
+	if source := firstBindWithFile(projectRoot, service.Volumes, filename); source != "" {
+		return source
+	}
+	if fileExists(filepath.Join(projectRoot, filename)) {
+		return projectRoot
+	}
+	return ""
+}
+
+func bindSourceForWorkingDir(projectRoot string, volumes []VolumeSpec, workingDir, filename string) string {
+	workingDir = cleanContainerPath(workingDir)
+	if workingDir == "" {
+		return ""
+	}
+	for _, volume := range volumes {
+		if !volume.IsBindLike() {
+			continue
+		}
+		rel, ok := containerRelativePath(volume.Target, workingDir)
+		if !ok {
+			continue
+		}
+		source := filepath.Join(volume.ResolveSource(projectRoot), filepath.FromSlash(rel))
+		if fileExists(filepath.Join(source, filename)) {
+			return source
+		}
+	}
+	return ""
 }
 
 func firstBindWithFile(projectRoot string, volumes []VolumeSpec, filename string) string {
@@ -475,6 +1143,36 @@ func firstBindWithFile(projectRoot string, volumes []VolumeSpec, filename string
 		}
 	}
 	return ""
+}
+
+func containerRelativePath(base, target string) (string, bool) {
+	base = cleanContainerPath(base)
+	target = cleanContainerPath(target)
+	if base == "" || target == "" {
+		return "", false
+	}
+	if target == base {
+		return ".", true
+	}
+	prefix := base
+	if prefix != "/" {
+		prefix += "/"
+	}
+	if strings.HasPrefix(target, prefix) {
+		return strings.TrimPrefix(target, prefix), true
+	}
+	return "", false
+}
+
+func cleanContainerPath(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if value == "" {
+		return ""
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	return path.Clean(value)
 }
 
 func resolveProjectPath(projectRoot, rawPath string) string {
@@ -494,6 +1192,20 @@ func labelDefault(labels map[string]string, key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func dbPersistMode(labels map[string]string, result *ServiceAnalysis) (string, bool) {
+	value := strings.TrimSpace(labels[LabelDBPersist])
+	if value == "" {
+		return "indexeddb", true
+	}
+	switch value {
+	case "indexeddb", "memory":
+		return value, true
+	default:
+		result.reject(fmt.Sprintf("pocketstack.db.persist must be indexeddb or memory, got %q", value))
+		return "", false
+	}
 }
 
 func labelInt(labels map[string]string, key string, fallback int) int {
@@ -556,10 +1268,14 @@ func isStaticWebImage(image string) bool {
 func isFrontendImage(image string) bool {
 	normalized := normalizedImage(image)
 	return normalized == "node" ||
-		normalized == "bun" ||
-		normalized == "oven/bun" ||
+		isBunImage(image) ||
 		strings.HasSuffix(normalized, "/node") ||
 		strings.HasSuffix(normalized, "/bun")
+}
+
+func isBunImage(image string) bool {
+	normalized := normalizedImage(image)
+	return normalized == "bun" || normalized == "oven/bun"
 }
 
 func staticTargetsForImage(image string) []string {
@@ -571,6 +1287,28 @@ func staticTargetsForImage(image string) []string {
 	default:
 		return []string{"/usr/share/nginx/html", "/var/www/html"}
 	}
+}
+
+func configTargetsForImage(image string) []string {
+	switch normalizedImage(image) {
+	case "httpd":
+		return []string{"/usr/local/apache2/conf", "/usr/local/apache2/conf/httpd.conf", "/etc/apache2", "/etc/httpd"}
+	case "caddy":
+		return []string{"/etc/caddy", "/etc/caddy/Caddyfile", "/config/caddy"}
+	default:
+		return []string{"/etc/nginx", "/etc/nginx/nginx.conf", "/etc/nginx/conf.d", "/etc/nginx/templates"}
+	}
+}
+
+func matchesStaticConfigTarget(targets []string, target string) bool {
+	target = filepath.Clean(target)
+	for _, current := range targets {
+		current = filepath.Clean(current)
+		if target == current || strings.HasPrefix(target, current+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func defaultPortForImage(image string) int {

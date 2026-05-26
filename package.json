@@ -3,14 +3,23 @@
   "version": "1.0.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "build:runtime": "esbuild runtime/src/app.ts --bundle --format=esm --target=es2022 --outfile=internal/staticdemo/runtime/app.js",
     "build:wasi-example": "wat2wasm examples/wasi/hello.wat -o examples/wasi/hello.wasm",
-    "test:runtime": "node --test runtime/test/runtime.test.mjs runtime/test/wasi.test.mjs",
-    "test:smoke": "node runtime/test/generated-demo.test.mjs"
+    "test:runtime": "node --test runtime/test/runtime.test.mjs runtime/test/wasi.test.mjs runtime/test/mock-routes.test.mjs runtime/test/mock-sw.test.mjs runtime/test/sqlite-adapter.test.mjs runtime/test/pglite-adapter.test.mjs runtime/test/frontend-adapter.test.mjs runtime/test/db-assets.test.mjs runtime/test/service-urls.test.mjs",
+    "test:smoke": "node runtime/test/generated-demo.test.mjs",
+    "media": "node scripts/record-announcement-demo.mjs",
+    "pages:build": "node scripts/build-pages-site.mjs",
+    "test:browsers": "node tests/browser/pages-basic.test.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "esbuild": "^0.25.0",
+    "js-yaml": "^4.1.1",
+    "puppeteer-core": "^25.1.0",
     "wabt": "^1.0.39"
   }
 }

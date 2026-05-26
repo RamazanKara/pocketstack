@@ -1,0 +1,33 @@
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #0d1b1f;
+  color: #f5fbf9;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+main {
+  width: min(760px, calc(100vw - 48px));
+}
+
+.eyebrow {
+  color: #88dbc7;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: clamp(42px, 7vw, 78px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+p {
+  color: #c5d8d5;
+  font-size: 20px;
+  line-height: 1.6;
+}

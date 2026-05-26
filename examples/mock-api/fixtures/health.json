@@ -1,9 +1,10 @@
 {
   "method": "GET",
-  "path": "/health",
+  "path": "/health?verbose=true",
   "status": 200,
   "body": {
     "ok": true,
-    "service": "mock-api"
+    "service": "mock-api",
+    "verbose": true
   }
 }

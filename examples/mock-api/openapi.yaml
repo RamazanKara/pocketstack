@@ -8,3 +8,31 @@ paths:
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              example:
+                ok: true
+                source: openapi
+  /users/{id}:
+    get:
+      responses:
+        "200":
+          $ref: "#/components/responses/UserResponse"
+components:
+  responses:
+    UserResponse:
+      description: User
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/User"
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: demo-user
+        name:
+          type: string
+          default: Ada

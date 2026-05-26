@@ -1,0 +1,8 @@
+services:
+  db:
+    image: scratch
+    labels:
+      pocketstack.adapter: sqlite
+      pocketstack.db.init: db/init.sql
+      pocketstack.db.seed: db/seed.sql
+      pocketstack.db.persist: memory

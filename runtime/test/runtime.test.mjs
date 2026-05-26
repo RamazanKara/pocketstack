@@ -9,10 +9,44 @@ test("runtime script exposes adapter handlers", async () => {
   }
 });
 
+test("runtime script includes real WASI fallback execution", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
+  assert.match(source, /runWasix/);
+  assert.match(source, /@wasmer\/sdk@0\.10\.0/);
+  assert.match(source, /wasi_unstable/);
+});
+
 test("runtime script remains a browser module", async () => {
   const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
   assert.match(source, /export\s*\{/);
   assert.match(source, /pocketstack\.manifest\.json/);
+});
+
+test("runtime script exposes browser database query bridge", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
+  assert.match(source, /POCKETSTACK_DB_QUERY/);
+  assert.match(source, /__pocketstack\/db/);
+  assert.match(source, /globalThis\.PocketStack/);
+});
+
+test("runtime script exposes WebContainer frontend bridge", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
+  assert.match(source, /POCKETSTACK_BRIDGE_FETCH/);
+  assert.match(source, /__pocketstack_bridge\.js/);
+  assert.match(source, /frontendBridgeTargetURL/);
+});
+
+test("runtime script surfaces service compatibility warnings", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
+  assert.match(source, /logServiceWarnings/);
+  assert.match(source, /COOP\/COEP required/);
+  assert.match(source, /public browser runtime packages or npm dependencies/);
+});
+
+test("mock OpenAPI YAML parser is bundled into generated demos", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /esm\.sh\/js-yaml/);
+  assert.match(source, /js-yaml 4\./);
 });
 
 test("mock service worker handles demos hosted below a path prefix", async () => {
@@ -20,4 +54,11 @@ test("mock service worker handles demos hosted below a path prefix", async () =>
   assert.match(source, /indexOf\(marker\)/);
   assert.match(source, /decodeURIComponent\(service\)/);
   assert.match(source, /clients\.claim/);
+});
+
+test("mock service worker supports OpenAPI path templates", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/mock-sw.js", import.meta.url), "utf8");
+  assert.match(source, /matchRoute/);
+  assert.match(source, /params\[parameter\[1\]\]/);
+  assert.match(source, /\^\\\{\(\[\^\/\]\+\)\\\}\$/);
 });

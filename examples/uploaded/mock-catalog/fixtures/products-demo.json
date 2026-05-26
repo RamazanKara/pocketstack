@@ -1,0 +1,11 @@
+{
+  "method": "GET",
+  "path": "/products/demo",
+  "status": 200,
+  "body": {
+    "id": "demo",
+    "name": "PocketStack launch mug",
+    "price": 18,
+    "source": "fixture"
+  }
+}

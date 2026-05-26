@@ -4,11 +4,20 @@ PocketStack demos must be static browser artifacts.
 
 That means:
 
-- no hidden backend
-- no remote runner
-- no local Docker daemon at demo time
-- no claim that arbitrary Linux containers run inside the browser
+- no hidden backend;
+- no remote runner;
+- no local Docker daemon at demo time;
+- no claim that arbitrary Linux containers run inside the browser.
 
-The CLI can inspect and package a local Compose project, but the generated demo must run as browser code and static assets.
+The CLI may inspect and package a local Compose project. The generated demo
+must run as browser code plus static assets.
 
-Unsupported Compose features should produce clear analysis output. Over time, those features can become supported only by adding a browser adapter such as WebAssembly, in-browser JavaScript runtimes, IndexedDB-backed storage, or generated mocks.
+## Compatibility Rule
+
+A Compose service is supported only when PocketStack can map it to an explicit
+browser adapter such as static files, WebAssembly, WebContainer-style frontend
+execution, browser databases, or generated mocks.
+
+Unsupported Compose features should produce clear analysis output. They can
+become supported later only by adding an honest browser adapter, not by hiding
+server work behind a static demo.

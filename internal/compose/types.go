@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -28,8 +29,15 @@ type Service struct {
 	DependsOn   any          `yaml:"depends_on,omitempty" json:"dependsOn,omitempty"`
 	Profiles    []string     `yaml:"profiles,omitempty" json:"profiles,omitempty"`
 	WorkingDir  string       `yaml:"working_dir,omitempty" json:"workingDir,omitempty"`
+	Environment any          `yaml:"environment,omitempty" json:"environment,omitempty"`
+	EnvFile     any          `yaml:"env_file,omitempty" json:"envFile,omitempty"`
 	Healthcheck any          `yaml:"healthcheck,omitempty" json:"healthcheck,omitempty"`
 	Labels      any          `yaml:"labels,omitempty" json:"labels,omitempty"`
+}
+
+type EnvFileSpec struct {
+	Path     string
+	Required bool
 }
 
 func (s Service) LabelMap() map[string]string {
@@ -63,6 +71,130 @@ func (s Service) LabelMap() map[string]string {
 		}
 	}
 	return labels
+}
+
+func (s Service) EnvironmentList() []string {
+	values := []string{}
+	switch typed := s.Environment.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			values = append(values, fmt.Sprintf("%s=%v", key, typed[key]))
+		}
+	case map[any]any:
+		valuesByKey := map[string]string{}
+		keys := make([]string, 0, len(typed))
+		for key, value := range typed {
+			keyString := fmt.Sprint(key)
+			keys = append(keys, keyString)
+			valuesByKey[keyString] = fmt.Sprint(value)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			values = append(values, fmt.Sprintf("%s=%s", key, valuesByKey[key]))
+		}
+	case []any:
+		for _, item := range typed {
+			values = append(values, fmt.Sprint(item))
+		}
+	case []string:
+		values = append(values, typed...)
+	}
+	return values
+}
+
+func (s Service) EnvFileList() []string {
+	specs := s.EnvFiles()
+	values := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		values = append(values, spec.Path)
+	}
+	return values
+}
+
+func (s Service) EnvFiles() []EnvFileSpec {
+	switch typed := s.EnvFile.(type) {
+	case string:
+		return compactEnvFileSpecs([]EnvFileSpec{{Path: typed, Required: true}})
+	case []string:
+		values := make([]EnvFileSpec, 0, len(typed))
+		for _, path := range typed {
+			values = append(values, EnvFileSpec{Path: path, Required: true})
+		}
+		return compactEnvFileSpecs(values)
+	case []any:
+		values := []EnvFileSpec{}
+		for _, item := range typed {
+			values = append(values, envFileSpec(item))
+		}
+		return compactEnvFileSpecs(values)
+	case map[string]any:
+		return compactEnvFileSpecs([]EnvFileSpec{envFileSpec(typed)})
+	case map[any]any:
+		return compactEnvFileSpecs([]EnvFileSpec{envFileSpec(typed)})
+	default:
+		return nil
+	}
+}
+
+func envFileSpec(value any) EnvFileSpec {
+	switch typed := value.(type) {
+	case string:
+		return EnvFileSpec{Path: typed, Required: true}
+	case map[string]any:
+		return EnvFileSpec{
+			Path:     fmt.Sprint(typed["path"]),
+			Required: boolDefault(typed["required"], true),
+		}
+	case map[any]any:
+		return EnvFileSpec{
+			Path:     fmt.Sprint(typed["path"]),
+			Required: boolDefault(typed["required"], true),
+		}
+	default:
+		return EnvFileSpec{Path: fmt.Sprint(typed), Required: true}
+	}
+}
+
+func boolDefault(value any, fallback bool) bool {
+	switch typed := value.(type) {
+	case nil:
+		return fallback
+	case bool:
+		return typed
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
+		if err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func compactEnvFileSpecs(values []EnvFileSpec) []EnvFileSpec {
+	result := []EnvFileSpec{}
+	for _, value := range values {
+		value.Path = strings.TrimSpace(value.Path)
+		if value.Path != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func compactStrings(values []string) []string {
+	result := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 type PortSpec struct {

@@ -1,0 +1,6 @@
+{
+  "method": "POST",
+  "path": "/echo/{id}",
+  "status": 201,
+  "bodyFrom": "request"
+}

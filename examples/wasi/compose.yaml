@@ -1,6 +1,8 @@
 services:
   hello:
     image: scratch
+    environment:
+      POCKETSTACK_MODE: demo
     labels:
       pocketstack.adapter: wasi
       pocketstack.wasi.module: hello.wasm
