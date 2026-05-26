@@ -1,0 +1,7 @@
+services:
+  db:
+    image: postgres:16-alpine
+    labels:
+      pocketstack.db.init: init.sql
+      pocketstack.db.seed: seed.sql
+      pocketstack.db.persist: indexeddb

@@ -1,0 +1,8 @@
+services:
+  api:
+    image: scratch
+    labels:
+      pocketstack.adapter: mock-http
+      pocketstack.mock.openapi: openapi.yaml
+      pocketstack.mock.fixtures: fixtures
+      pocketstack.mock.port: "8080"

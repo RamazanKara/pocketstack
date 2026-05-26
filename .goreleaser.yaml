@@ -1,0 +1,56 @@
+version: 2
+
+project_name: pocketstack
+
+before:
+  hooks:
+    - npm ci
+    - npm run build:runtime
+    - go test ./...
+    - go vet ./...
+
+builds:
+  - id: pocketstack
+    main: ./cmd/pocketstack
+    binary: pocketstack
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/ramazankara/pocketstack/internal/cli.version={{.Version}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - docs/*
+      - examples/**/*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: ramazankara
+    name: pocketstack

@@ -1,0 +1,7 @@
+services:
+  hello:
+    image: scratch
+    labels:
+      pocketstack.adapter: wasi
+      pocketstack.wasi.module: hello.wasm
+      pocketstack.wasi.args: "--name PocketStack"

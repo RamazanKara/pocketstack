@@ -1,0 +1,14 @@
+{
+  "name": "pocketstack",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:runtime": "esbuild runtime/src/app.ts --bundle --format=esm --target=es2022 --outfile=internal/staticdemo/runtime/app.js",
+    "test:runtime": "node --test runtime/test/runtime.test.mjs",
+    "test:smoke": "node runtime/test/generated-demo.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
