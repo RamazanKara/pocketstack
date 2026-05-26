@@ -8,12 +8,13 @@ PocketStack v1 is deliberately browser-only. It does not start a hidden server, 
 
 ## Install
 
-Download a `v1.0.0` binary from the GitHub release for `ramazankara/pocketstack`, or build from source:
+Download the latest `v1.x` binary from the GitHub release for `ramazankara/pocketstack`, or build from source:
 
 ```sh
 git clone https://github.com/ramazankara/pocketstack.git
 cd pocketstack
 npm ci
+npm run build:wasi-example
 npm run build:runtime
 go build -o bin/pocketstack ./cmd/pocketstack
 ```
@@ -77,10 +78,11 @@ pocketstack version
 
 ```sh
 npm ci
+npm run build:wasi-example
 npm run build:runtime
 npm run test:runtime
 go test ./...
 go vet ./...
 make smoke
-goreleaser release --snapshot --clean --skip=publish
+goreleaser release --clean --skip=publish
 ```

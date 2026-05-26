@@ -23,6 +23,7 @@ jobs:
           node-version: "20"
           cache: npm
       - run: npm ci
+      - run: npm run build:wasi-example
       - run: npm run build:runtime
       - uses: goreleaser/goreleaser-action@v6
         with:

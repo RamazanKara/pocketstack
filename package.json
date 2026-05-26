@@ -1,14 +1,16 @@
 {
   "name": "pocketstack",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "scripts": {
     "build:runtime": "esbuild runtime/src/app.ts --bundle --format=esm --target=es2022 --outfile=internal/staticdemo/runtime/app.js",
-    "test:runtime": "node --test runtime/test/runtime.test.mjs",
+    "build:wasi-example": "wat2wasm examples/wasi/hello.wat -o examples/wasi/hello.wasm",
+    "test:runtime": "node --test runtime/test/runtime.test.mjs runtime/test/wasi.test.mjs",
     "test:smoke": "node runtime/test/generated-demo.test.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "wabt": "^1.0.39"
   }
 }

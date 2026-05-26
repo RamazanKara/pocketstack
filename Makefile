@@ -5,6 +5,7 @@ test:
 	npm run test:runtime
 
 build:
+	npm run build:wasi-example
 	npm run build:runtime
 	go build -o bin/pocketstack ./cmd/pocketstack
 
@@ -15,6 +16,7 @@ demo:
 	go run ./cmd/pocketstack demo -f examples/static-site/compose.yaml -o dist/static-site
 
 runtime:
+	npm run build:wasi-example
 	npm run build:runtime
 
 smoke: build

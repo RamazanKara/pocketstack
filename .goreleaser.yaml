@@ -5,6 +5,7 @@ project_name: pocketstack
 before:
   hooks:
     - npm ci
+    - npm run build:wasi-example
     - npm run build:runtime
     - go test ./...
     - go vet ./...
@@ -34,6 +35,9 @@ archives:
     files:
       - README.md
       - LICENSE
+      - SECURITY.md
+      - CONTRIBUTING.md
+      - CODE_OF_CONDUCT.md
       - docs/*
       - examples/**/*
 

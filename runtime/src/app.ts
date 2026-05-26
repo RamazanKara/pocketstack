@@ -2,6 +2,7 @@ const state = {
   manifest: null,
   selected: null,
   webcontainers: new Map(),
+  databases: new Map(),
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -104,7 +105,7 @@ function descriptionFor(service) {
     case "wasi":
       return "Start this service to execute the prebuilt WebAssembly module in the browser.";
     case "mock-http":
-      return `Mock routes are served under <code>/__pocketstack/mock/${service.name}/</code>.`;
+      return `Mock routes are served under <code>${mockRouteURL(service, "/")}</code>.`;
     case "postgres-pglite":
       return "Start this service to initialize a PGlite Postgres-compatible database in the browser.";
     case "sqlite":
@@ -151,6 +152,7 @@ async function startSelected() {
 async function resetSelected() {
   if (!state.selected) return;
   const service = state.selected;
+  state.databases.delete(service.name);
   if (service.adapter === "postgres-pglite" || service.adapter === "sqlite") {
     const prefix = `pocketstack:${service.name}:`;
     Object.keys(localStorage).filter((key) => key.startsWith(prefix)).forEach((key) => localStorage.removeItem(key));
@@ -217,11 +219,15 @@ async function startWASI(service) {
   if (!module) throw new Error("WASI module path missing");
   const bytes = await fetchBytes(module);
   try {
-    const instance = await WebAssembly.instantiate(bytes, {
-      wasi_snapshot_preview1: wasiPreview(service),
+    let instance;
+    const imports = wasiPreview(service, () => instance);
+    const result = await WebAssembly.instantiate(bytes, {
+      wasi_snapshot_preview1: imports,
       env: {},
     });
-    const exports = instance.instance?.exports || instance.exports;
+    const instantiated = result.instance || result;
+    instance = instantiated;
+    const exports = instantiated.exports;
     if (typeof exports._start === "function") exports._start();
     log("WASM module instantiated in the browser.");
   } catch (error) {
@@ -233,13 +239,94 @@ async function startWASI(service) {
   }
 }
 
-function wasiPreview() {
+function wasiPreview(service, getInstance) {
+  const args = splitCommand(service.config.args || "");
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const errnoSuccess = 0;
+  const errnoInval = 28;
+  function memory() {
+    const instance = getInstance();
+    return instance?.exports?.memory;
+  }
+  function view() {
+    const current = memory();
+    if (!current) throw new Error("WASI module does not export memory");
+    return new DataView(current.buffer);
+  }
+  function bytes() {
+    const current = memory();
+    if (!current) throw new Error("WASI module does not export memory");
+    return new Uint8Array(current.buffer);
+  }
+  function writeCString(offset, value) {
+    bytes().set(encoder.encode(`${value}\0`), offset);
+  }
   return {
-    fd_write(_fd, _iovs, _iovsLen, nwritten) {
+    args_sizes_get(argc, argvBufSize) {
+      const currentView = view();
+      currentView.setUint32(argc, args.length, true);
+      currentView.setUint32(argvBufSize, args.reduce((size, arg) => size + encoder.encode(arg).length + 1, 0), true);
+      return errnoSuccess;
+    },
+    args_get(argv, argvBuf) {
+      const currentView = view();
+      let offset = argvBuf;
+      args.forEach((arg, index) => {
+        currentView.setUint32(argv + index * 4, offset, true);
+        writeCString(offset, arg);
+        offset += encoder.encode(arg).length + 1;
+      });
+      return errnoSuccess;
+    },
+    environ_sizes_get(environCount, environBufSize) {
+      const currentView = view();
+      currentView.setUint32(environCount, 0, true);
+      currentView.setUint32(environBufSize, 0, true);
+      return errnoSuccess;
+    },
+    environ_get() {
+      return errnoSuccess;
+    },
+    fd_write(fd, iovs, iovsLen, nwritten) {
       try {
-        new DataView(new ArrayBuffer(4)).setUint32(nwritten, 0, true);
-      } catch (_) {}
-      return 0;
+        const currentView = view();
+        const currentBytes = bytes();
+        let written = 0;
+        let output = "";
+        for (let index = 0; index < iovsLen; index += 1) {
+          const pointer = currentView.getUint32(iovs + index * 8, true);
+          const length = currentView.getUint32(iovs + index * 8 + 4, true);
+          output += decoder.decode(currentBytes.slice(pointer, pointer + length));
+          written += length;
+        }
+        currentView.setUint32(nwritten, written, true);
+        if (fd === 1 || fd === 2) {
+          output.split(/\n/).filter(Boolean).forEach((line) => log(line, fd === 2 ? "stderr" : ""));
+        }
+        return errnoSuccess;
+      } catch (error) {
+        log(error.message, "wasi");
+        return errnoInval;
+      }
+    },
+    fd_close() {
+      return errnoSuccess;
+    },
+    fd_fdstat_get() {
+      return errnoSuccess;
+    },
+    fd_seek() {
+      return errnoSuccess;
+    },
+    random_get(pointer, length) {
+      crypto.getRandomValues(bytes().subarray(pointer, pointer + length));
+      return errnoSuccess;
+    },
+    clock_time_get(_clockId, _precision, timestamp) {
+      const now = BigInt(Date.now()) * 1000000n;
+      view().setBigUint64(timestamp, now, true);
+      return errnoSuccess;
     },
     proc_exit(code) {
       log(`WASI process exited with code ${code}`);
@@ -248,9 +335,13 @@ function wasiPreview() {
 }
 
 async function startMock(service) {
-  const registration = await navigator.serviceWorker.register("./mock-sw.js");
+  if (!("serviceWorker" in navigator)) {
+    throw new Error("This browser does not support service workers.");
+  }
+  const registration = await navigator.serviceWorker.register("./mock-sw.js", { scope: "./" });
+  await navigator.serviceWorker.ready;
   const routes = await loadFixtureRoutes(service);
-  const worker = registration.active || registration.waiting || registration.installing;
+  const worker = registration.active || navigator.serviceWorker.controller || registration.waiting || registration.installing;
   if (worker) worker.postMessage({ type: "POCKETSTACK_ROUTES", service: service.name, routes });
   log(`Registered ${routes.length} mock route(s).`);
   renderMockRoutes(service, routes);
@@ -278,25 +369,47 @@ function renderMockRoutes(service, routes) {
   const panel = document.createElement("section");
   panel.className = "panel";
   panel.innerHTML = `<h2>${service.name}</h2>${routes.map((route) => {
-    const url = `/__pocketstack/mock/${service.name}${route.path}`;
-    return `<p><code>${route.method} ${url}</code></p>`;
-  }).join("")}`;
+    const url = mockRouteURL(service, route.path);
+    return `<p><code>${route.method} ${url}</code> <button type="button" data-try="${url}">Try</button></p>`;
+  }).join("")}<pre style="height:auto;min-height:120px"></pre>`;
+  const output = panel.querySelector("pre");
+  panel.querySelectorAll("[data-try]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const response = await fetch(button.dataset.try);
+      output.textContent = await response.text();
+    });
+  });
   $("#preview").replaceChildren(panel);
 }
 
+function mockRouteURL(service, path) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `./__pocketstack/mock/${encodeURIComponent(service.name)}${normalizedPath}`;
+}
+
 async function startPGlite(service) {
+  if (state.databases.has(service.name)) {
+    renderQueryPanel(service, state.databases.get(service.name));
+    return;
+  }
   const { PGlite } = await import("https://cdn.jsdelivr.net/npm/@electric-sql/pglite/dist/index.js");
   const persist = service.config.persist === "memory" ? "memory://" : `idb://pocketstack-${service.name}`;
   const db = new PGlite(persist);
   await executeSQLAssets(db, service);
   log("PGlite database initialized.");
-  renderQueryPanel(service, async (sql) => {
+  const query = async (sql) => {
     const rows = await db.query(sql);
     return JSON.stringify(rows.rows || rows, null, 2);
-  });
+  };
+  state.databases.set(service.name, query);
+  renderQueryPanel(service, query);
 }
 
 async function startSQLite(service) {
+  if (state.databases.has(service.name)) {
+    renderQueryPanel(service, state.databases.get(service.name));
+    return;
+  }
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js");
   const SQL = await window.initSqlJs({
     locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`,
@@ -304,10 +417,12 @@ async function startSQLite(service) {
   const db = new SQL.Database();
   await executeSQLiteAssets(db, service);
   log("SQLite database initialized.");
-  renderQueryPanel(service, async (sql) => {
+  const query = async (sql) => {
     const result = db.exec(sql);
     return JSON.stringify(result, null, 2);
-  });
+  };
+  state.databases.set(service.name, query);
+  renderQueryPanel(service, query);
 }
 
 async function executeSQLAssets(db, service) {

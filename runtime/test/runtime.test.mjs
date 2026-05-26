@@ -14,3 +14,10 @@ test("runtime script remains a browser module", async () => {
   assert.match(source, /export\s*\{/);
   assert.match(source, /pocketstack\.manifest\.json/);
 });
+
+test("mock service worker handles demos hosted below a path prefix", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/mock-sw.js", import.meta.url), "utf8");
+  assert.match(source, /indexOf\(marker\)/);
+  assert.match(source, /decodeURIComponent\(service\)/);
+  assert.match(source, /clients\.claim/);
+});
