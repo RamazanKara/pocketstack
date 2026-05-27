@@ -37,6 +37,43 @@ services:
 	if len(analysis.Services) != 1 || !analysis.Services[0].BrowserNative {
 		t.Fatalf("service analysis = %#v", analysis.Services)
 	}
+	if analysis.Readiness.Status != "ready" || analysis.Readiness.Score != 100 {
+		t.Fatalf("readiness = %#v", analysis.Readiness)
+	}
+}
+
+func TestAnalyzeUnsupportedServiceIncludesReadinessAndSuggestions(t *testing.T) {
+	root := t.TempDir()
+	composeFile := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte(`
+services:
+  cache:
+    image: redis:7
+    ports:
+      - "6379:6379"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := AnalyzeFile(composeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.Mode != ModeUnsupported || analysis.BrowserNative {
+		t.Fatalf("analysis = %#v", analysis)
+	}
+	if analysis.Readiness.Status != "blocked" || analysis.Readiness.Score != 0 || analysis.Readiness.TotalServices != 1 {
+		t.Fatalf("readiness = %#v", analysis.Readiness)
+	}
+	service := analysis.Services[0]
+	if len(service.Suggestions) == 0 {
+		t.Fatalf("suggestions were not generated: %#v", service)
+	}
+	if !containsReason(service.Suggestions, "replace this stateful service") {
+		t.Fatalf("suggestions = %#v", service.Suggestions)
+	}
+	if len(analysis.NextSteps) == 0 || !strings.Contains(analysis.NextSteps[0], "cache:") {
+		t.Fatalf("next steps = %#v", analysis.NextSteps)
+	}
 }
 
 func TestAnalyzeStaticWebWarnsForServerConfigMounts(t *testing.T) {

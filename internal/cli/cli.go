@@ -60,6 +60,7 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 		return printJSON(stdout, stderr, analysis)
 	}
 	fmt.Fprintf(stdout, "Mode: %s\n", analysis.Mode)
+	fmt.Fprintf(stdout, "Browser readiness: %d%% (%s)\n", analysis.Readiness.Score, analysis.Readiness.Summary)
 	for _, service := range analysis.Services {
 		if service.BrowserNative {
 			if service.AssetSource != "" {
@@ -72,13 +73,19 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 			}
 			continue
 		}
-		fmt.Fprintf(stdout, "  %s: unsupported in browser-only mode\n", service.Name)
+		fmt.Fprintf(stdout, "  %s: unsupported in browser-native mode\n", service.Name)
 		for _, reason := range service.Unsupported {
 			fmt.Fprintf(stdout, "    - %s\n", reason)
 		}
+		for _, suggestion := range service.Suggestions {
+			fmt.Fprintf(stdout, "    suggestion: %s\n", suggestion)
+		}
 	}
 	if !analysis.BrowserNative {
-		fmt.Fprintln(stdout, "\nNo server fallback is available. Add a browser adapter, compile to WASM, use a browser database, or mock the service.")
+		fmt.Fprintln(stdout, "\nNext steps:")
+		for _, step := range analysis.NextSteps {
+			fmt.Fprintf(stdout, "  - %s\n", step)
+		}
 	}
 	return 0
 }
@@ -132,7 +139,7 @@ func resolveComposeFile(path string) (string, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, strings.TrimSpace(`PocketStack turns compatible Docker Compose projects into browser-only demos.
+	fmt.Fprintln(w, strings.TrimSpace(`PocketStack turns browser-compatible Docker Compose projects into static demos.
 
 Usage:
   pocketstack analyze [-f compose.yaml] [--json]

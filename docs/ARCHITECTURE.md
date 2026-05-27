@@ -30,7 +30,9 @@ server fallback state.
 
 This is intentionally conservative. A false positive would create a misleading
 demo, so adapters are allowlisted and unsupported services keep concrete
-reasons in the analysis output.
+reasons in the analysis output. The analyzer also produces a readiness score,
+service suggestions, and project next steps so unsupported stacks still get a
+useful conversion plan.
 
 Implemented adapters:
 
@@ -64,8 +66,8 @@ requirements apply, and what warnings the generated demo should show.
 - host config files when cross-origin isolation is required
 
 The manifest is version `2`, sets `browserOnly: true`, carries service adapter
-metadata, copied asset paths, generated warnings, host requirements, and a
-stable storage namespace for browser database adapters.
+metadata, readiness metadata, copied asset paths, generated warnings, host
+requirements, and a stable storage namespace for browser database adapters.
 
 Generation only succeeds when every service is browser-native. If any service
 is unsupported, PocketStack exits with a reasoned incompatibility report

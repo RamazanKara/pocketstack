@@ -5,6 +5,10 @@ browser adapter. If even one service needs Docker/container semantics that
 PocketStack cannot represent honestly, generation stops with an unsupported
 reason.
 
+`pocketstack analyze` is designed to be useful even when generation is blocked.
+It reports a browser-readiness score, service blockers, and conversion
+suggestions for turning a Compose stack into a browser-native demo.
+
 The short version:
 
 - Static sites are the easiest fit.
@@ -35,6 +39,20 @@ The short version:
 
 Unsupported does not mean impossible forever. It means there is no honest
 browser adapter for that behavior yet.
+
+## Readiness Report
+
+Every analysis result includes:
+
+- `readiness.status`: `ready`, `partial`, or `blocked`;
+- `readiness.score`: percentage of services that are browser-native;
+- service-level `unsupported` reasons;
+- service-level `suggestions`;
+- project-level `nextSteps`.
+
+The goal is to make unsupported services actionable. For example, a Redis
+service is reported as stateful browser-incompatible and points you toward
+SQLite, PGlite, fixtures, or in-browser mock state for the demo.
 
 ## Labels
 

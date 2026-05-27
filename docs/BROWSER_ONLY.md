@@ -13,6 +13,10 @@ That means:
 The CLI may inspect and package a local Compose project. The generated demo
 must run as browser code plus static assets.
 
+PocketStack can analyze any Compose file, but it only generates demos for
+browser-native stacks. Analysis should stay useful for unsupported projects by
+explaining blockers and suggesting browser-native replacements.
+
 ## Why This Exists
 
 A good demo is easy to open and easy to trust. If PocketStack says a project is

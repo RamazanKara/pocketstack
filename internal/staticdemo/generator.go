@@ -41,8 +41,10 @@ type Manifest struct {
 	BrowserOnly      bool                     `json:"browserOnly"`
 	ComposeFile      string                   `json:"composeFile"`
 	StorageNamespace string                   `json:"storageNamespace"`
+	Readiness        compose.Readiness        `json:"readiness"`
 	HostRequirements compose.HostRequirements `json:"hostRequirements,omitempty"`
 	Warnings         []string                 `json:"warnings,omitempty"`
+	NextSteps        []string                 `json:"nextSteps,omitempty"`
 	Services         []ManifestService        `json:"services"`
 }
 
@@ -97,8 +99,10 @@ func Generate(options Options) (*Result, error) {
 		BrowserOnly:      true,
 		ComposeFile:      analysis.ComposeFile,
 		StorageNamespace: demoStorageNamespace(analysis.ComposeFile),
+		Readiness:        analysis.Readiness,
 		HostRequirements: analysis.HostRequirements,
 		Warnings:         analysis.Warnings,
+		NextSteps:        analysis.NextSteps,
 		Services:         make([]ManifestService, 0, len(analysis.Services)),
 	}
 

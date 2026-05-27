@@ -236,7 +236,7 @@ p {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.8rem;
   margin-top: 0.9rem;
 }
@@ -386,6 +386,11 @@ p {
 
 .message-list li.blocked {
   border-left-color: #d85b45;
+}
+
+.message-list li.suggest {
+  border-left-color: #2a8f74;
+  color: #245f51;
 }
 
 .preview-panel {

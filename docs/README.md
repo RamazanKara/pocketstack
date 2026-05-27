@@ -6,7 +6,9 @@ Compose project into a useful live demo.
 Start here:
 
 - [Compatibility matrix](COMPATIBILITY.md): supported Compose patterns,
-  labels, adapter behavior, and unsupported boundaries.
+  labels, readiness reports, adapter behavior, and unsupported boundaries.
+- [Browser-native conversion guide](CONVERSION_GUIDE.md): practical ways to
+  reshape unsupported services into useful static demos.
 - [Browser-only contract](BROWSER_ONLY.md): the promise PocketStack keeps when
   it says a demo is browser-native.
 - [Static hosting](HOSTING.md): COOP/COEP, generated host config files, and

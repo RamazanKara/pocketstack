@@ -8,13 +8,18 @@ call a PocketStack backend, Docker daemon, runner, or hidden server. The only
 network dependency is the browser loading `js-yaml` from a public CDN so YAML
 can be parsed locally in the tab.
 
+Studio shows the same browser-readiness model as the CLI: readiness score,
+ready services, services that need uploaded files, unsupported services, and
+conversion suggestions.
+
 Studio mirrors the CLI analyzer closely enough to flag:
 
 - unsupported services;
 - missing project files for bind-mounted assets;
 - COOP/COEP host requirements;
 - browser runtime network access;
-- the WebContainer bridge used for mock/database demo endpoints.
+- the WebContainer bridge used for mock/database demo endpoints;
+- stateful or daemon-style services that need browser-native demo substitutes.
 
 Use the public Studio:
 

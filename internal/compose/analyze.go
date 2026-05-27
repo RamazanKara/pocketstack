@@ -44,15 +44,25 @@ type Analysis struct {
 	ProjectRoot      string            `json:"projectRoot"`
 	Mode             string            `json:"mode"`
 	BrowserNative    bool              `json:"browserNative"`
+	Readiness        Readiness         `json:"readiness"`
 	Services         []ServiceAnalysis `json:"services"`
 	HostRequirements HostRequirements  `json:"hostRequirements,omitempty"`
 	Warnings         []string          `json:"warnings,omitempty"`
+	NextSteps        []string          `json:"nextSteps,omitempty"`
 }
 
 type HostRequirements struct {
 	CrossOriginIsolationRequired bool              `json:"crossOriginIsolationRequired,omitempty"`
 	NetworkAccessRequired        bool              `json:"networkAccessRequired,omitempty"`
 	Headers                      map[string]string `json:"headers,omitempty"`
+}
+
+type Readiness struct {
+	Status                string `json:"status"`
+	BrowserNativeServices int    `json:"browserNativeServices"`
+	TotalServices         int    `json:"totalServices"`
+	Score                 int    `json:"score"`
+	Summary               string `json:"summary"`
 }
 
 type ServiceAnalysis struct {
@@ -69,6 +79,7 @@ type ServiceAnalysis struct {
 	HostRequirements HostRequirements  `json:"hostRequirements,omitempty"`
 	Warnings         []string          `json:"warnings,omitempty"`
 	Unsupported      []string          `json:"unsupported,omitempty"`
+	Suggestions      []string          `json:"suggestions,omitempty"`
 }
 
 type AssetAnalysis struct {
@@ -131,7 +142,7 @@ func Analyze(project *Project, projectRoot, composeFile string) Analysis {
 	}
 
 	if !analysis.BrowserNative {
-		analysis.Warnings = append(analysis.Warnings, "PocketStack is browser-only. Unsupported services must be adapted to static assets, WebAssembly, browser databases, or mocks.")
+		analysis.Warnings = append(analysis.Warnings, "PocketStack is browser-native only. Unsupported services need a browser adapter, static assets, WebAssembly, browser database, or mock.")
 	}
 	if analysis.HostRequirements.CrossOriginIsolationRequired {
 		analysis.Warnings = append(analysis.Warnings, "This demo needs COOP/COEP headers for cross-origin isolation.")
@@ -139,6 +150,8 @@ func Analyze(project *Project, projectRoot, composeFile string) Analysis {
 	if analysis.HostRequirements.NetworkAccessRequired {
 		analysis.Warnings = append(analysis.Warnings, "This demo may access public package/runtime CDNs from the browser.")
 	}
+	analysis.Readiness = browserReadiness(analysis.Services)
+	analysis.NextSteps = projectNextSteps(analysis.Services)
 	return analysis
 }
 
@@ -160,15 +173,21 @@ func analyzeService(name string, service Service, projectRoot string) ServiceAna
 			} else {
 				result.reject(fmt.Sprintf("unknown PocketStack adapter %q", explicit))
 			}
+			result.Suggestions = suggestionsForService(context, result.Unsupported)
 			return result
 		}
 		for _, current := range adapters() {
 			if current.Name() == explicit {
-				return current.Analyze(context)
+				result := current.Analyze(context)
+				if !result.BrowserNative {
+					result.Suggestions = suggestionsForService(context, result.Unsupported)
+				}
+				return result
 			}
 		}
 		result := baseServiceAnalysis(context, AdapterUnsupported)
 		result.reject(fmt.Sprintf("unknown PocketStack adapter %q", explicit))
+		result.Suggestions = suggestionsForService(context, result.Unsupported)
 		return result
 	}
 
@@ -184,10 +203,11 @@ func analyzeService(name string, service Service, projectRoot string) ServiceAna
 	result := baseServiceAnalysis(context, AdapterUnsupported)
 	result.BrowserNative = false
 	result.Adapter = AdapterUnsupported
-	result.Unsupported = compactReasons(rejected)
+	result.Unsupported = primaryUnsupportedReasons(context, rejected)
 	if len(result.Unsupported) == 0 {
 		result.reject("no browser adapter matched this service")
 	}
+	result.Suggestions = suggestionsForService(context, result.Unsupported)
 	return result
 }
 
@@ -208,6 +228,170 @@ func adapters() []adapter {
 		mockHTTPAdapter{},
 		postgresAdapter{},
 		sqliteAdapter{},
+	}
+}
+
+func browserReadiness(services []ServiceAnalysis) Readiness {
+	total := len(services)
+	native := 0
+	for _, service := range services {
+		if service.BrowserNative {
+			native++
+		}
+	}
+	score := 0
+	if total > 0 {
+		score = native * 100 / total
+	}
+	status := "blocked"
+	switch {
+	case total == 0:
+		status = "blocked"
+	case native == total:
+		status = "ready"
+	case native > 0:
+		status = "partial"
+	}
+	summary := fmt.Sprintf("%d of %d services are browser-native", native, total)
+	if status == "ready" {
+		summary = "all services are browser-native"
+	}
+	return Readiness{
+		Status:                status,
+		BrowserNativeServices: native,
+		TotalServices:         total,
+		Score:                 score,
+		Summary:               summary,
+	}
+}
+
+func projectNextSteps(services []ServiceAnalysis) []string {
+	steps := []string{}
+	allNative := true
+	for _, service := range services {
+		if service.BrowserNative {
+			continue
+		}
+		allNative = false
+		for _, suggestion := range service.Suggestions {
+			steps = appendUnique(steps, fmt.Sprintf("%s: %s", service.Name, suggestion))
+		}
+	}
+	if allNative {
+		return []string{"Run `pocketstack demo` to generate a static browser-native demo."}
+	}
+	if len(steps) == 0 {
+		steps = append(steps, "Replace unsupported services with static assets, frontend projects, WASI modules, browser databases, or OpenAPI mocks.")
+	}
+	return steps
+}
+
+func primaryUnsupportedReasons(context adapterContext, rejected []string) []string {
+	service := context.Service
+	image := normalizedImage(service.Image)
+	reasons := []string{}
+	if service.Build != nil {
+		reasons = append(reasons, "Docker build contexts cannot run in a browser-native demo")
+	}
+	if knownStatefulImage(image) {
+		reasons = append(reasons, fmt.Sprintf("image %q is a stateful service without a direct browser-native container adapter", service.Image))
+	}
+	switch {
+	case isStaticWebImage(service.Image):
+		reasons = appendMatchingReasons(reasons, rejected, "static")
+	case isFrontendImage(service.Image):
+		reasons = appendMatchingReasons(reasons, rejected, "frontend", "package.json", "env_file")
+	case image == "postgres":
+		reasons = appendMatchingReasons(reasons, rejected, "postgres", "pocketstack.db")
+	}
+	if len(reasons) == 0 {
+		if service.Image != "" {
+			reasons = append(reasons, fmt.Sprintf("image %q does not map to a browser-native adapter", service.Image))
+		} else {
+			reasons = append(reasons, "service does not declare a supported browser-native adapter")
+		}
+	}
+	return compactReasons(reasons)
+}
+
+func appendMatchingReasons(values, rejected []string, needles ...string) []string {
+	for _, reason := range rejected {
+		lower := strings.ToLower(reason)
+		for _, needle := range needles {
+			if strings.Contains(lower, strings.ToLower(needle)) {
+				values = append(values, reason)
+				break
+			}
+		}
+	}
+	return values
+}
+
+func suggestionsForService(context adapterContext, reasons []string) []string {
+	service := context.Service
+	image := normalizedImage(service.Image)
+	suggestions := []string{}
+	if context.Explicit != "" && !supportedExplicitAdapter(context.Explicit) {
+		suggestions = appendUnique(suggestions, "Use a supported explicit adapter: frontend, wasi, mock-http, postgres-pglite, or sqlite.")
+	}
+	if service.Build != nil {
+		suggestions = appendUnique(suggestions, "Run the Docker build before PocketStack and expose the browser-ready output as static files, frontend source, WASI, fixtures, or SQL seed data.")
+	}
+	for _, reason := range reasons {
+		lower := strings.ToLower(reason)
+		switch {
+		case strings.Contains(lower, "static-web is autodetected"):
+			suggestions = appendUnique(suggestions, "Remove `pocketstack.adapter=static-web`; use an nginx, httpd, or caddy image with a document-root bind mount.")
+		case strings.Contains(lower, "no local static asset") && isStaticWebImage(service.Image):
+			suggestions = appendUnique(suggestions, "Mount local static files at the image document root, for example `./site:/usr/share/nginx/html:ro`.")
+		case strings.Contains(lower, "package.json") && (context.Explicit == AdapterFrontend || isFrontendImage(service.Image)):
+			suggestions = appendUnique(suggestions, "Mount or upload the frontend source directory that contains `package.json`.")
+		case (strings.Contains(lower, "dev/start script") || strings.Contains(lower, "frontend.start")) && (context.Explicit == AdapterFrontend || isFrontendImage(service.Image)):
+			suggestions = appendUnique(suggestions, "Add a `dev` or `start` package script, or set `pocketstack.frontend.start`.")
+		case (strings.Contains(lower, "openapi") || strings.Contains(lower, "fixtures")) && context.Explicit == AdapterMockHTTP:
+			suggestions = appendUnique(suggestions, "For HTTP APIs, add `pocketstack.adapter=mock-http` with an OpenAPI file and/or JSON fixtures.")
+		case (strings.Contains(lower, ".wasm") || strings.Contains(lower, "wasi")) && context.Explicit == AdapterWASI:
+			suggestions = appendUnique(suggestions, "Compile the service to a prebuilt WASI `.wasm` module and reference it with `pocketstack.wasi.module`.")
+		case strings.Contains(lower, "env_file"):
+			suggestions = appendUnique(suggestions, "Include required env files in the uploaded project or mark optional env files with `required: false`.")
+		}
+	}
+	switch {
+	case knownStatefulImage(image):
+		suggestions = appendUnique(suggestions, "For demos, replace this stateful service with SQLite, PGlite, fixtures, or in-browser mock state.")
+	case image == "postgres":
+		suggestions = appendUnique(suggestions, "Keep Postgres demo data in `.sql` init/seed files so PocketStack can run it with PGlite.")
+	case isStaticWebImage(service.Image):
+		suggestions = appendUnique(suggestions, "Use only document-root file mounts for browser-native static previews; server rewrites and custom config are not emulated.")
+	}
+	if len(service.Ports) > 0 && context.Explicit == "" && !knownStatefulImage(image) && !isStaticWebImage(service.Image) && !isFrontendImage(service.Image) && image != "postgres" {
+		suggestions = appendUnique(suggestions, "If this is an HTTP service, model the demo surface as `mock-http` instead of trying to run the container.")
+	}
+	if len(suggestions) == 0 {
+		suggestions = appendUnique(suggestions, "Choose a browser-native representation: static-web, frontend, WASI, mock-http, postgres-pglite, or sqlite.")
+	}
+	return suggestions
+}
+
+func appendUnique(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func knownStatefulImage(image string) bool {
+	switch image {
+	case "mysql", "mariadb", "mongo", "mongodb", "redis", "valkey", "memcached":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -1,15 +1,16 @@
 # PocketStack
 
-PocketStack turns supported Docker Compose projects into shareable demos that
-run as static browser apps.
+PocketStack turns browser-compatible Docker Compose projects into shareable
+demos that run as static browser apps.
 
 > Drop in `docker-compose.yml`, get a static browser-native demo when every
 > service can be mapped to browser primitives.
 
-PocketStack v1 is intentionally browser-only. Generated demos do not start a
+PocketStack v1 is intentionally browser-native. Generated demos do not start a
 hidden server, upload projects to a runner, require Docker at demo time, or
 pretend arbitrary Linux containers can run in a web page. If a service cannot
-be represented honestly by a browser adapter, PocketStack says so.
+be represented honestly by a browser adapter, PocketStack gives you a
+readiness report and concrete conversion suggestions.
 
 Try it now: <https://ramazankara.github.io/pocketstack/>
 
@@ -56,6 +57,10 @@ Analyze a Compose project:
 pocketstack analyze -f compose.yaml
 ```
 
+The analyzer returns a browser-readiness score, supported adapters, blockers,
+and next steps for services that need to be converted into browser-native
+pieces.
+
 Generate a browser-only demo:
 
 ```sh
@@ -101,6 +106,16 @@ Unsupported services are reported with concrete reasons and no server fallback.
 See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for exact behavior and
 limits.
 
+## Product Boundary
+
+PocketStack stays browser-native. It will not add a hidden Docker runner to
+make unsupported services appear compatible.
+
+That means full arbitrary Compose compatibility is not the v1 promise. The
+promise is better for static demos: when a stack can become browser-native,
+PocketStack packages it; when it cannot, PocketStack explains the gap and how
+to reshape the demo.
+
 ## Examples
 
 The public site includes generated demos for the built-in examples:
@@ -143,6 +158,7 @@ pocketstack version
 
 - [Browser-only contract](docs/BROWSER_ONLY.md)
 - [Compatibility matrix](docs/COMPATIBILITY.md)
+- [Conversion guide](docs/CONVERSION_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Static hosting](docs/HOSTING.md)
 - [Website integration](docs/WEBSITE_INTEGRATION.md)

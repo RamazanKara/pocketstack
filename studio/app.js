@@ -48,6 +48,7 @@ const els = {
   clearButton: document.querySelector("#clear-button"),
   dropZone: document.querySelector("#drop-zone"),
   modeValue: document.querySelector("#mode-value"),
+  readinessScore: document.querySelector("#readiness-score"),
   serviceCount: document.querySelector("#service-count"),
   readyCount: document.querySelector("#ready-count"),
   needsCount: document.querySelector("#needs-count"),
@@ -302,6 +303,8 @@ async function analyzeProject(project, composeName, fileIndex) {
 
   const browserNative = services.every((service) => service.browserNative);
   const mode = browserNative ? "browser-native" : "unsupported";
+  const readiness = browserReadiness(services);
+  const nextSteps = projectNextSteps(services);
   const hostRequirements = services.reduce(
     (merged, service) => mergeHostRequirements(merged, service.hostRequirements),
     {},
@@ -330,8 +333,10 @@ async function analyzeProject(project, composeName, fileIndex) {
     browserOnly: true,
     composeFile: composeName,
     storageNamespace,
+    readiness,
     hostRequirements,
     warnings,
+    nextSteps,
     services: services.map((service) => toManifestService(service, storageNamespace)),
   };
 
@@ -339,8 +344,10 @@ async function analyzeProject(project, composeName, fileIndex) {
     composeFile: composeName,
     mode,
     browserNative,
+    readiness,
     hostRequirements,
     warnings,
+    nextSteps,
     services,
     manifest,
   };
@@ -360,13 +367,16 @@ async function analyzeService(name, rawService, fileIndex) {
         : `unknown PocketStack adapter "${explicit}"`;
       return unsupportedResult(context, reason);
     }
-    return adapter.analyze(context);
+    const result = await adapter.analyze(context);
+    if (!result.browserNative) result.suggestions = suggestionsForService(context, result.unsupported);
+    return result;
   }
 
   const rejected = [];
   for (const adapter of adapterRegistry()) {
     const result = await adapter.analyze(context);
     if (result.browserNative || result.status === "needs-files") {
+      if (!result.browserNative) result.suggestions = suggestionsForService(context, result.unsupported);
       return result;
     }
     rejected.push(...result.unsupported);
@@ -375,10 +385,11 @@ async function analyzeService(name, rawService, fileIndex) {
   const result = baseServiceAnalysis(context, ADAPTERS.unsupported);
   result.browserNative = false;
   result.status = "unsupported";
-  result.unsupported = compactReasons(rejected);
+  result.unsupported = primaryUnsupportedReasons(context, rejected);
   if (result.unsupported.length === 0) {
     result.unsupported.push("no browser adapter matched this service");
   }
+  result.suggestions = suggestionsForService(context, result.unsupported);
   return result;
 }
 
@@ -717,6 +728,7 @@ function baseServiceAnalysis(context, adapterName) {
     hostRequirements: {},
     warnings: [],
     unsupported: [],
+    suggestions: [],
     preview: null,
   };
 }
@@ -724,6 +736,7 @@ function baseServiceAnalysis(context, adapterName) {
 function unsupportedResult(context, reason) {
   const result = baseServiceAnalysis(context, ADAPTERS.unsupported);
   reject(result, reason);
+  result.suggestions = suggestionsForService(context, result.unsupported);
   return result;
 }
 
@@ -1433,6 +1446,128 @@ function compactReasons(values) {
   return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))].sort();
 }
 
+function primaryUnsupportedReasons(context, rejected) {
+  const { service } = context;
+  const image = normalizedImage(service.image);
+  let reasons = [];
+  if (hasValue(service.build)) {
+    reasons.push("Docker build contexts cannot run in a browser-native demo");
+  }
+  if (knownStatefulImage(image)) {
+    reasons.push(`image "${service.image}" is a stateful service without a direct browser-native container adapter`);
+  }
+  if (isStaticWebImage(service.image)) {
+    reasons = appendMatchingReasons(reasons, rejected, "static");
+  } else if (isFrontendImage(service.image)) {
+    reasons = appendMatchingReasons(reasons, rejected, "frontend", "package.json", "env_file");
+  } else if (image === "postgres") {
+    reasons = appendMatchingReasons(reasons, rejected, "postgres", "pocketstack.db");
+  }
+  if (reasons.length === 0) {
+    reasons.push(service.image
+      ? `image "${service.image}" does not map to a browser-native adapter`
+      : "service does not declare a supported browser-native adapter");
+  }
+  return compactReasons(reasons);
+}
+
+function appendMatchingReasons(values, rejected, ...needles) {
+  for (const reason of rejected) {
+    const lower = String(reason).toLowerCase();
+    if (needles.some((needle) => lower.includes(String(needle).toLowerCase()))) {
+      values.push(reason);
+    }
+  }
+  return values;
+}
+
+function browserReadiness(services) {
+  const total = services.length;
+  const native = services.filter((service) => service.browserNative).length;
+  const score = total > 0 ? Math.floor((native * 100) / total) : 0;
+  let status = "blocked";
+  if (total > 0 && native === total) status = "ready";
+  else if (native > 0) status = "partial";
+  return {
+    status,
+    browserNativeServices: native,
+    totalServices: total,
+    score,
+    summary: status === "ready" ? "all services are browser-native" : `${native} of ${total} services are browser-native`,
+  };
+}
+
+function projectNextSteps(services) {
+  const steps = [];
+  let allNative = true;
+  for (const service of services) {
+    if (service.browserNative) continue;
+    allNative = false;
+    for (const suggestion of service.suggestions || []) {
+      appendUnique(steps, `${service.name}: ${suggestion}`);
+    }
+  }
+  if (allNative) return ["Run `pocketstack demo` to generate a static browser-native demo."];
+  if (steps.length === 0) {
+    steps.push("Replace unsupported services with static assets, frontend projects, WASI modules, browser databases, or OpenAPI mocks.");
+  }
+  return steps;
+}
+
+function suggestionsForService(context, reasons = []) {
+  const { service, explicit } = context;
+  const image = normalizedImage(service.image);
+  const suggestions = [];
+  if (explicit && !SUPPORTED_EXPLICIT.has(explicit)) {
+    appendUnique(suggestions, "Use a supported explicit adapter: frontend, wasi, mock-http, postgres-pglite, or sqlite.");
+  }
+  if (hasValue(service.build)) {
+    appendUnique(suggestions, "Run the Docker build before PocketStack and expose the browser-ready output as static files, frontend source, WASI, fixtures, or SQL seed data.");
+  }
+  for (const reason of reasons) {
+    const lower = String(reason).toLowerCase();
+    if (lower.includes("static-web is autodetected")) {
+      appendUnique(suggestions, "Remove `pocketstack.adapter=static-web`; use an nginx, httpd, or caddy image with a document-root bind mount.");
+    } else if (lower.includes("no local static asset") && isStaticWebImage(service.image)) {
+      appendUnique(suggestions, "Upload a project folder with local static files mounted at the image document root.");
+    } else if (lower.includes("package.json") && (explicit === ADAPTERS.frontend || isFrontendImage(service.image))) {
+      appendUnique(suggestions, "Upload or mount the frontend source directory that contains `package.json`.");
+    } else if ((lower.includes("dev/start script") || lower.includes("frontend.start")) && (explicit === ADAPTERS.frontend || isFrontendImage(service.image))) {
+      appendUnique(suggestions, "Add a `dev` or `start` package script, or set `pocketstack.frontend.start`.");
+    } else if ((lower.includes("openapi") || lower.includes("fixtures")) && explicit === ADAPTERS.mockHTTP) {
+      appendUnique(suggestions, "For HTTP APIs, add `pocketstack.adapter=mock-http` with an OpenAPI file and/or JSON fixtures.");
+    } else if ((lower.includes(".wasm") || lower.includes("wasi")) && explicit === ADAPTERS.wasi) {
+      appendUnique(suggestions, "Compile the service to a prebuilt WASI `.wasm` module and reference it with `pocketstack.wasi.module`.");
+    } else if (lower.includes("env_file")) {
+      appendUnique(suggestions, "Include required env files in the uploaded project or mark optional env files with `required: false`.");
+    }
+  }
+  if (knownStatefulImage(image)) {
+    appendUnique(suggestions, "For demos, replace this stateful service with SQLite, PGlite, fixtures, or in-browser mock state.");
+  } else if (image === "postgres") {
+    appendUnique(suggestions, "Keep Postgres demo data in `.sql` init/seed files so PocketStack can run it with PGlite.");
+  } else if (isStaticWebImage(service.image)) {
+    appendUnique(suggestions, "Use only document-root file mounts for browser-native static previews; server rewrites and custom config are not emulated.");
+  }
+  if ((service.ports || []).length > 0 && !explicit && !knownStatefulImage(image) && !isStaticWebImage(service.image) && !isFrontendImage(service.image) && image !== "postgres") {
+    appendUnique(suggestions, "If this is an HTTP service, model the demo surface as `mock-http` instead of trying to run the container.");
+  }
+  if (suggestions.length === 0) {
+    suggestions.push("Choose a browser-native representation: static-web, frontend, WASI, mock-http, postgres-pglite, or sqlite.");
+  }
+  return suggestions;
+}
+
+function appendUnique(values, value) {
+  value = String(value || "").trim();
+  if (value && !values.includes(value)) values.push(value);
+  return values;
+}
+
+function knownStatefulImage(image) {
+  return ["mysql", "mariadb", "mongo", "mongodb", "redis", "valkey", "memcached"].includes(image);
+}
+
 async function demoStorageNamespace(composeName, fileIndex) {
   const input = [
     composeName || "compose.yaml",
@@ -1478,6 +1613,7 @@ function toManifestService(service, storageNamespace) {
     config,
     warnings: service.warnings,
     unsupported: service.unsupported,
+    suggestions: service.suggestions,
     hostRequirements: service.hostRequirements,
   };
 }
@@ -1500,6 +1636,7 @@ async function renderAnalysis(analysis, fileIndex) {
   const needsFiles = analysis.services.filter((service) => service.status === "needs-files").length;
 
   els.modeValue.textContent = analysis.mode;
+  els.readinessScore.textContent = `${analysis.readiness.score}%`;
   els.serviceCount.textContent = String(analysis.services.length);
   els.readyCount.textContent = String(ready);
   els.needsCount.textContent = String(needsFiles);
@@ -1523,6 +1660,7 @@ function renderServiceCard(service) {
       message,
       kind: service.status === "needs-files" ? "warn" : "blocked",
     })),
+    ...(service.suggestions || []).map((message) => ({ message, kind: "suggest" })),
   ];
 
   card.innerHTML = `
@@ -1581,6 +1719,7 @@ async function renderPreview(analysis, fileIndex) {
 
 function renderError(error) {
   els.modeValue.textContent = "error";
+  els.readinessScore.textContent = "0%";
   els.serviceCount.textContent = "0";
   els.readyCount.textContent = "0";
   els.needsCount.textContent = "0";
@@ -1594,6 +1733,7 @@ function renderError(error) {
 
 function renderEmptyState() {
   els.modeValue.textContent = "waiting";
+  els.readinessScore.textContent = "0%";
   els.serviceCount.textContent = "0";
   els.readyCount.textContent = "0";
   els.needsCount.textContent = "0";
