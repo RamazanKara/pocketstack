@@ -24,8 +24,6 @@ Then go deeper:
   publishing.
 - [v1.0.2 release notes](RELEASE_NOTES_v1.0.2.md): current release highlights
   and constraints.
-- [LinkedIn announcement](ANNOUNCEMENT_LINKEDIN.md): launch copy and posting
-  checklist.
 
 PocketStack v1 is browser-only. Unsupported Compose features should remain
 explicitly unsupported until an honest browser adapter exists for them.

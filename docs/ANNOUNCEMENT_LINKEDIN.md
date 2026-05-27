@@ -2,37 +2,39 @@
 
 ## Primary Post
 
-I just shipped PocketStack v1.0.2.
+I built the thing I wish every open-source README had:
 
-PocketStack is an open-source tool that turns supported Docker Compose projects
-into shareable live demos that run as static browser apps.
+A live demo you can open from a link.
 
-The magic trick is not "Docker in the browser."
+No clone.
+No setup.
+No "works on my machine."
 
-The real promise is more honest:
+Meet PocketStack.
 
-If every Compose service can map to a browser-native adapter, PocketStack
-packages the project into a static demo. If a service needs real Docker,
-privileged Linux behavior, opaque volumes, or container networking, PocketStack
-says it is unsupported instead of hiding a backend behind the page.
+It takes a Docker Compose project and turns it into a shareable browser demo
+when the stack can be represented safely in the browser.
 
-Current browser adapters:
+The important part:
 
-- static sites from nginx/httpd/caddy document-root mounts
-- Node/Bun frontend demos
-- prebuilt WASI modules
-- OpenAPI + JSON fixture HTTP mocks
-- PGlite Postgres demos
-- SQLite demos
+This is not pretending Docker magically runs inside a tab.
 
-The release includes:
+If PocketStack can make a real browser-native demo, it does.
+If it cannot, it tells you why.
 
-- a hosted Studio where you can paste or upload Compose YAML
-- generated live demos
-- upload-ready example projects
-- website integration docs for links and iframe embeds
-- Chrome, Edge, and Safari-class WebKit smoke tests in CI
-- binaries for Linux, macOS, and Windows
+That boundary matters.
+
+Because the future I want is:
+
+- every GitHub project has a "try it now" button
+- docs pages can embed real product demos
+- maintainers can show work without asking people to install a stack first
+- users can feel the project before they read the setup guide
+
+PocketStack v1.0.2 is live now.
+
+It includes a hosted Studio, generated demo examples, release binaries, and a
+short live demo video.
 
 Try it here:
 https://ramazankara.github.io/pocketstack/
@@ -43,34 +45,33 @@ https://github.com/RamazanKara/pocketstack
 Release:
 https://github.com/RamazanKara/pocketstack/releases/tag/v1.0.2
 
-I built this because sharing a local dev stack should be as easy as sharing a
-link when the stack is compatible with browser primitives. PocketStack is still
-early, but the boundary is clear: static browser-native demos first, no hidden
-server fallback.
+This is early, but it already feels like the right direction:
 
-Feedback, weird Compose files, and adapter ideas are very welcome.
+less "please set up my environment"
+more "click here and try it."
 
-#opensource #docker #webdevelopment #developerTools #webassembly
+I would love feedback from people building open-source tools, devtools,
+templates, examples, docs, and demos.
+
+#opensource #devtools #docker #webdevelopment #buildinpublic
 
 ## Shorter Variant
 
-I shipped PocketStack v1.0.2.
+I built PocketStack because every open-source project should have a live demo
+you can open from a link.
 
-It turns supported Docker Compose projects into shareable live demos that run
-as static browser apps.
+No clone.
+No setup.
+No "works on my machine."
 
-Important boundary: this is not "Docker in the browser." PocketStack only
-generates a browser-native demo when every service can map to an honest browser
-adapter. Otherwise, it reports why the stack is unsupported.
+PocketStack takes a Docker Compose project and turns it into a shareable
+browser demo when the stack can safely run as browser-native pieces.
 
-Supported today:
+It is not pretending Docker runs in the browser.
+If it can make an honest demo, it does.
+If it cannot, it tells you why.
 
-- static web
-- Node/Bun frontend demos
-- WASI modules
-- OpenAPI + fixture mocks
-- PGlite Postgres
-- SQLite
+v1.0.2 is live now with hosted Studio, example demos, and release binaries.
 
 Try the hosted Studio:
 https://ramazankara.github.io/pocketstack/
@@ -78,7 +79,7 @@ https://ramazankara.github.io/pocketstack/
 GitHub:
 https://github.com/RamazanKara/pocketstack
 
-#opensource #docker #developerTools #webassembly
+#opensource #devtools #docker #buildinpublic
 
 ## Posting Checklist
 
@@ -87,5 +88,7 @@ https://github.com/RamazanKara/pocketstack
   LinkedIn asks for one.
 - Put the public Studio link in the post body:
   `https://ramazankara.github.io/pocketstack/`.
-- Mention the browser-only boundary clearly.
-- Avoid claiming full Docker Compose compatibility inside the browser.
+- Keep the wording broad and benefit-first.
+- Say "not pretending Docker runs in the browser" if people might misread the
+  project.
+- Avoid deep adapter details in the main post; save those for comments.
