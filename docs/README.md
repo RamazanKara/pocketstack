@@ -16,7 +16,7 @@ Start with the contract, then move into adapter details:
   for the public site and generated demos.
 - [Release process](RELEASE.md): local checks, GoReleaser, checksums, and tag
   publishing.
-- [v1.0.1 release notes](RELEASE_NOTES_v1.0.1.md): current release highlights
+- [v1.0.2 release notes](RELEASE_NOTES_v1.0.2.md): current release highlights
   and constraints.
 
 PocketStack v1 is browser-only. Unsupported Compose features should remain

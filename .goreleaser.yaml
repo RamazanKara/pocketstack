@@ -38,8 +38,11 @@ archives:
       - SECURITY.md
       - CONTRIBUTING.md
       - CODE_OF_CONDUCT.md
-      - docs/*
+      - docs/*.md
+      - docs/media/*
       - examples/**/*
+      - site/*
+      - studio/*
 
 checksum:
   name_template: "checksums.txt"

@@ -39,8 +39,8 @@ make verify-checksums
 Use a fresh semantic version:
 
 ```sh
-git tag v1.0.1
-git push origin main v1.0.1
+git tag v1.0.2
+git push origin main v1.0.2
 ```
 
 The GitHub `release` workflow runs GoReleaser and publishes Linux, macOS, and
