@@ -1,21 +1,40 @@
 # PocketStack
 
-PocketStack turns compatible Docker Compose projects into shareable demos that
-run completely inside the browser.
+PocketStack turns supported Docker Compose projects into shareable demos that
+run as static browser apps.
 
 > Drop in `docker-compose.yml`, get a static browser-native demo when every
 > service can be mapped to browser primitives.
 
-PocketStack v1 is deliberately browser-only. Generated demos do not start a
+PocketStack v1 is intentionally browser-only. Generated demos do not start a
 hidden server, upload projects to a runner, require Docker at demo time, or
-claim that arbitrary Linux containers run in a web page.
+pretend arbitrary Linux containers can run in a web page. If a service cannot
+be represented honestly by a browser adapter, PocketStack says so.
+
+Try it now: <https://ramazankara.github.io/pocketstack/>
 
 [![PocketStack announcement video](docs/media/pocketstack-announcement-poster.png)](docs/media/pocketstack-announcement.mp4)
 
+## What You Can Demo
+
+PocketStack is useful for projects that have a browser-native shape:
+
+- static sites served by `nginx`, `httpd`, or `caddy`;
+- frontend projects that can run with a Node/Bun browser runtime;
+- prebuilt WASI modules;
+- OpenAPI services that can be mocked from specs and fixtures;
+- Postgres-flavored demos that fit PGlite;
+- SQLite demos seeded from SQL or database files.
+
+It is not a Docker replacement. Privileged containers, arbitrary daemons,
+opaque volume behavior, and real Linux networking remain unsupported unless a
+specific browser adapter exists.
+
 ## Install
 
-Download the latest `v1.x` binary from the GitHub release for
-`ramazankara/pocketstack`, or build from source:
+Download the latest binary from
+[GitHub Releases](https://github.com/ramazankara/pocketstack/releases/latest),
+or build from source:
 
 ```sh
 git clone https://github.com/ramazankara/pocketstack.git
@@ -47,37 +66,52 @@ Serve `pocketstack-demo/` from any static host. Frontend/WebContainer and some
 WASI demos require COOP/COEP headers; PocketStack emits host config files when
 they are needed. See [docs/HOSTING.md](docs/HOSTING.md).
 
-The public Studio and generated examples are published with GitHub Pages at
-<https://ramazankara.github.io/pocketstack/>.
-
 ## Studio
 
 PocketStack Studio is a static browser page for quick compatibility checks.
 Paste Compose YAML, upload a Compose file, and optionally add the project
 folder so Studio can inspect mounted assets.
 
+Use the hosted Studio at <https://ramazankara.github.io/pocketstack/studio/>,
+or run it locally:
+
 ```sh
 make studio
 ```
 
 Open <http://127.0.0.1:4173/>. Use `make studio PORT=4174` if that port is
-busy. Studio runs entirely in the tab; it does not call a PocketStack backend,
+busy.
+
+Studio runs entirely in the tab. It does not call a PocketStack backend,
 Docker daemon, runner, or hidden server.
 
 ## Supported Adapters
 
-| Adapter | Selected by | Browser behavior |
-| --- | --- | --- |
-| `static-web` | Autodetected `nginx`, `httpd`, or `caddy` document-root mounts | Copies regular static files and previews them in an iframe |
-| `frontend` | Node/Bun image plus `package.json`, or `pocketstack.adapter=frontend` | Runs a packaged project in a WebContainer-style browser runtime |
-| `wasi` | `pocketstack.adapter=wasi` plus `pocketstack.wasi.module` | Runs a prebuilt `.wasm` module with browser WASI support |
-| `mock-http` | `pocketstack.adapter=mock-http` | Serves OpenAPI routes and JSON fixtures from the demo service worker |
-| `postgres-pglite` | Postgres image or `pocketstack.adapter=postgres-pglite` | Maps supported Postgres demos to PGlite with resettable browser storage |
-| `sqlite` | `pocketstack.adapter=sqlite` | Runs SQLite from SQL or seed database assets in the browser |
+- `static-web`: copies document-root files from `nginx`, `httpd`, or `caddy`
+  services and previews them in an iframe.
+- `frontend`: packages a Node/Bun project for browser runtime execution.
+- `wasi`: runs an explicitly labeled prebuilt `.wasm` module.
+- `mock-http`: serves OpenAPI routes and JSON fixtures from the demo service
+  worker.
+- `postgres-pglite`: maps supported Postgres demos to resettable PGlite
+  browser storage.
+- `sqlite`: runs SQLite from SQL or seed database assets in the browser.
 
 Unsupported services are reported with concrete reasons and no server fallback.
 See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for exact behavior and
 limits.
+
+## Examples
+
+The public site includes generated demos for the built-in examples:
+
+- [static web](https://ramazankara.github.io/pocketstack/demos/static-site/)
+- [mock API](https://ramazankara.github.io/pocketstack/demos/mock-api/)
+- [SQLite](https://ramazankara.github.io/pocketstack/demos/sqlite/)
+
+Studio-ready example projects live under
+[examples/uploaded](examples/uploaded/README.md). They are small enough to
+read, upload, and use as templates for your own Compose files.
 
 ## Labels
 

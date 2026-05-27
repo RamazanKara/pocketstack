@@ -1,115 +1,165 @@
 # Compatibility Matrix
 
-PocketStack v1 is browser-only. It supports Compose projects only when every service maps to an adapter below.
+PocketStack v1 supports Compose projects when every service maps to a real
+browser adapter. If even one service needs Docker/container semantics that
+PocketStack cannot represent honestly, generation stops with an unsupported
+reason.
 
-| Compose pattern | Adapter | Status |
-| --- | --- | --- |
-| `nginx`, `httpd`, or `caddy` serving bind-mounted local files or directories under the document root | `static-web` | Supported for document-root files; mounted server config is detected and warned, not emulated |
-| Node/Bun frontend with `package.json` in the project root or a bind-mounted source directory, plus a Compose command, `dev` script, `start` script, or `pocketstack.frontend.start` label | `frontend` | Supported with npm/pnpm/yarn/bun detection, Compose environment variables, mock service URL rewriting, cross-origin isolation, binary-safe project assets, and resettable WebContainer lifecycle |
-| Prebuilt WASM module referenced by `pocketstack.wasi.module` | `wasi` | Supported with argv, Compose environment, stdio, clock, random, empty preopen metadata imports, conservative stubs for common unused filesystem/socket imports, legacy `wasi_unstable` imports, and a Wasmer JS fallback |
-| OpenAPI YAML/JSON file and optional JSON fixture directory | `mock-http` | Supported, including bundled YAML parsing, path templates, local component/path-item `$ref`s, required query parameter examples, response headers, media types, and no-body responses |
-| `postgres` image with optional SQL init/seed files/directories or mounted `/docker-entrypoint-initdb.d/*.sql` files | `postgres-pglite` | Supported with one-time bootstrap, per-demo `indexeddb` or `memory` persistence, reset, and demo HTTP query bridge |
-| Explicit SQLite service with optional SQL init/seed files, SQL init/seed directories, or `.db`/`.sqlite` seed file | `sqlite` | Supported with per-demo `indexeddb` or `memory` persistence, reset, and demo HTTP query bridge |
-| Docker builds, privileged containers, arbitrary daemons, Linux networking, or opaque volume behavior | none | Unsupported |
+The short version:
 
-Unsupported does not mean impossible forever. It means no honest browser adapter exists for that service yet.
+- Static sites are the easiest fit.
+- Frontend apps can work when their source and package scripts are available.
+- APIs can be mocked from OpenAPI plus fixtures.
+- Small database demos can use PGlite or SQLite.
+- WASI works for prebuilt `.wasm` modules.
+- Arbitrary Linux containers, Docker builds, privileged daemons, and real
+  container networking are out of scope for browser-only v1.
 
-## Mock HTTP
+## Adapter Matrix
 
-For `mock-http`, generated OpenAPI routes provide default/example responses
-from inline schemas or local `#/components/...` references, including
-OpenAPI 3.1 path item refs. Required query parameters with examples/defaults
-are turned into browser mock query constraints. Fixture directories package
-`.json` files only; non-JSON files are warned and skipped, and a fixtures-only
-mock needs at least one JSON fixture. Fixture files with the same method and
-path override the OpenAPI-generated route, and fixture paths may include query
-constraints such as `/search?q=demo`.
-YAML OpenAPI parsing is bundled into the generated runtime, so mock demos do
-not need a parser CDN just to read packaged specs.
-OpenAPI status codes, response headers, selected media types, and no-body
-responses such as `204`, `205`, `304`, and `HEAD` are preserved.
-Fixtures may also use `bodyFrom: "request"`, `request.params`,
-`request.json`, `request.text`, or `request.query` for small dynamic
-browser-only mock responses. Mock routes are registered automatically when the
-demo loads and include CORS/preflight headers so WebContainer-hosted frontends
-can fetch them from the generated static demo origin.
+- `static-web`: supports `nginx`, `httpd`, or `caddy` services with
+  document-root mounts. Regular files and directories are copied into the
+  generated demo.
+- `frontend`: supports Node/Bun frontend projects with `package.json` and a
+  runnable command or script.
+- `wasi`: supports explicitly labeled prebuilt WASM modules with browser WASI
+  and a Wasmer JS fallback.
+- `mock-http`: supports OpenAPI YAML/JSON plus optional JSON fixtures through
+  service-worker routes.
+- `postgres-pglite`: supports Postgres-shaped demos with SQL init or seed files
+  through PGlite.
+- `sqlite`: supports explicit SQLite services with SQL or database seed assets
+  through sql.js.
+- Unsupported: Docker builds, privileged containers, opaque volumes, arbitrary
+  daemons, and Linux networking are unsupported in browser-only v1.
+
+Unsupported does not mean impossible forever. It means there is no honest
+browser adapter for that behavior yet.
+
+## Labels
+
+Use labels when PocketStack cannot safely infer intent:
+
+```yaml
+labels:
+  pocketstack.adapter: frontend|wasi|mock-http|postgres-pglite|sqlite
+  pocketstack.frontend.install: npm install
+  pocketstack.frontend.start: npm run dev -- --host 0.0.0.0
+  pocketstack.frontend.port: "5173"
+  pocketstack.wasi.module: hello.wasm
+  pocketstack.wasi.args: "--name PocketStack"
+  pocketstack.mock.openapi: openapi.yaml
+  pocketstack.mock.fixtures: fixtures
+  pocketstack.mock.port: "8080"
+  pocketstack.db.init: init.sql
+  pocketstack.db.seed: seed.sql
+  pocketstack.db.persist: indexeddb|memory
+```
+
+`static-web` is autodetected from the image and document-root mounts. It is not
+selected with `pocketstack.adapter`.
 
 ## Static Web
 
-For `static-web`, PocketStack copies and previews regular files from mounts at
-or below the image's document root, including common output directories such as
-`dist/`. This supports whole root directories, single files such as
-`index.html`, and subdirectories such as `assets/`. Root-relative URLs in
-packaged HTML/CSS such as `/assets/app.css` are rewritten to paths relative to
-the generated static preview location. It does not
-emulate nginx/httpd/caddy redirects, rewrites, custom headers, auth,
-compression, or other server configuration. `static-web` is autodetected from
-the image and document-root mounts; it is not selected with
-`pocketstack.adapter`.
+PocketStack copies files mounted at or below the image document root and
+renders them in an iframe preview. It handles whole directories, single files
+such as `index.html`, and common output folders such as `dist/`.
+
+Root-relative URLs in packaged HTML/CSS such as `/assets/app.css` are rewritten
+so the copied site still works from the generated demo path.
+
+PocketStack does not emulate nginx/httpd/caddy redirects, rewrites, custom
+headers, auth, compression, or other server configuration. Those cases produce
+warnings instead of fake support.
 
 ## Frontend
 
-For `frontend`, explicit `pocketstack.adapter=frontend` can package a
-root-level `package.json` even when the Compose service has no Node/Bun image;
-autodetection still requires a Node/Bun image. Compose `environment:` and
-`env_file:` values are passed to WebContainer install and start processes.
-Required `env_file` entries must be present in the project folder; long-syntax
-entries with `required: false` may be missing and are skipped with a warning.
-Host-shell interpolation and secrets are not resolved by PocketStack in
-browser-only mode, and env file values are embedded into the generated static
-demo. When `working_dir` points inside a bind mount, PocketStack uses that
-subdirectory as the packaged frontend project root. Simple `entrypoint` and
-`command` combinations are preserved as the WebContainer start command. If
-that command already runs an install step, the generated demo skips
-PocketStack's separate inferred install command. When a frontend environment
-variable points at a `mock-http` service using a Compose-style URL such as
-`http://api:8080`, the runtime rewrites it to the static demo's mock service
-URL. It also injects `POCKETSTACK_<SERVICE>_URL` and
-`VITE_POCKETSTACK_<SERVICE>_URL` for each mock service. Because WebContainer
-previews run in their own iframe origin, PocketStack mounts a generated bridge
-script into the project and injects it into packaged `.html`/`.htm` files when
-browser mock or database services are present. It also exposes
-`POCKETSTACK_BRIDGE_URL` and `VITE_POCKETSTACK_BRIDGE_URL` for apps that need
-to import the bridge manually. The bridge forwards only known PocketStack
-mock/database demo requests to the parent runtime; it is not a general network
-proxy.
+Frontend services are meant for projects that can run from source in a browser
+runtime. Autodetection requires a Node/Bun image plus `package.json`.
+`pocketstack.adapter=frontend` can be used when the service image is not enough
+to infer intent.
+
+PocketStack packages the project root or the bind-mounted `working_dir`, keeps
+simple `entrypoint`/`command` start behavior, and passes Compose
+`environment:` plus `env_file:` values into the browser runtime. Required env
+files must be present in the uploaded/generated project. Optional long-syntax
+env files may be missing and are reported as warnings.
+
+When frontend code points at a `mock-http` service with a Compose-style URL
+such as `http://api:8080`, the generated runtime rewrites it to the static
+demo's browser mock URL. PocketStack also injects service URL environment
+variables such as `POCKETSTACK_API_URL` and `VITE_POCKETSTACK_API_URL`.
+
+If a frontend needs PocketStack mock or database endpoints from inside the
+preview iframe, the generator mounts a small bridge script into the project.
+The bridge forwards only known PocketStack demo endpoints. It is not a general
+network proxy.
+
+## Mock HTTP
+
+Mock services turn OpenAPI specs and JSON fixtures into static browser routes.
+YAML parsing is bundled into the generated runtime, so packaged demos do not
+need a parser CDN just to read local specs.
+
+Supported mock features include:
+
+- OpenAPI YAML or JSON;
+- local `#/components/...` and path-item references;
+- path templates and required query parameter examples/defaults;
+- response status codes, headers, media types, and no-body responses;
+- JSON fixture overrides;
+- request-aware fixtures using `request.params`, `request.query`,
+  `request.json`, `request.text`, or `bodyFrom: "request"`;
+- CORS and preflight responses for frontend demos.
+
+Fixture directories package `.json` files only. Other files are skipped with a
+warning, and a fixtures-only mock must contain at least one JSON fixture.
 
 ## Browser Databases
 
-For browser database adapters, generated demos include a stable storage
-namespace so multiple PocketStack demos with the same service names can share
-one static origin without reusing the same IndexedDB keys. Generated demos also
-expose a browser-only query bridge at
-`/__pocketstack/db/<service>/query`; send `POST` JSON such as
-`{"sql":"select 1"}` to run SQL against the in-browser adapter and receive
-adapter-native JSON results. This bridge is for demos and custom browser UI;
-it is not a Postgres TCP wire-protocol server or a substitute for arbitrary
-Docker networking.
+`postgres-pglite` and `sqlite` adapters initialize browser databases from
+packaged SQL or seed database assets. Generated demos include a stable storage
+namespace so multiple PocketStack demos can share one static origin without
+reusing the same IndexedDB keys.
 
-## WASI
+Both adapters expose a demo-only query endpoint:
 
-For `wasi`, PocketStack first tries the built-in browser WASI preview imports.
-Those cover common prebuilt preview1 modules without a heavier runtime. If a
-module needs a fuller WASI/WASIX runtime, the generated demo falls back to
-Wasmer JS and passes the same argv and Compose environment values. That
-fallback requires cross-origin isolation headers and public CDN access, but it
-does not use a PocketStack backend.
+```text
+/__pocketstack/db/<service>/query
+```
 
-## SQLite
-
-For `sqlite`, `pocketstack.db.init` and `pocketstack.db.seed` may point to a
-single SQL file or to a directory of `.sql` files. Directory entries are copied
-and executed in sorted order. Binary `.db`, `.sqlite`, and `.sqlite3` seed
-files are still loaded as the starting database image rather than executed as
-SQL. Frontend environments also receive `POCKETSTACK_<SERVICE>_URL`,
-`VITE_POCKETSTACK_<SERVICE>_URL`, `POCKETSTACK_<SERVICE>_DB_URL`, and
-`VITE_POCKETSTACK_<SERVICE>_DB_URL` for each browser database service.
+Send `POST` JSON such as `{"sql":"select 1"}` to query the in-browser
+database and receive adapter-native JSON. This is for demos and custom browser
+UI. It is not a Postgres TCP server, Docker networking, or a backend proxy.
 
 ## PGlite Postgres
 
-For `postgres-pglite`, `pocketstack.db.init` and `pocketstack.db.seed` may
-point to a single `.sql` file or to a directory of `.sql` files. PocketStack can
-also package local bind mounts under `/docker-entrypoint-initdb.d` when they
-contain `.sql` files. Shell scripts, compressed SQL dumps, and other Docker
-entrypoint behaviors are not executed in browser-only mode and are reported as
-warnings.
+`postgres-pglite` can package SQL files from `pocketstack.db.init`,
+`pocketstack.db.seed`, and local bind mounts under
+`/docker-entrypoint-initdb.d`.
+
+SQL files execute once for persisted databases and again after reset. Shell
+scripts, compressed dumps, and other Docker entrypoint behavior are not run in
+browser-only mode.
+
+## SQLite
+
+`sqlite` can package a single SQL file, a directory of `.sql` files, or a
+binary `.db`, `.sqlite`, or `.sqlite3` seed file. SQL directories execute in
+sorted order. Binary database seeds are loaded as the starting database image
+rather than executed as SQL.
+
+Frontend environments receive both URL and DB URL variables, for example
+`POCKETSTACK_DB_URL`, `VITE_POCKETSTACK_DB_URL`,
+`POCKETSTACK_DB_DB_URL`, and `VITE_POCKETSTACK_DB_DB_URL`.
+
+## WASI
+
+`wasi` supports prebuilt modules only. PocketStack does not compile source,
+run Docker builds, or manufacture a WASI module from a container image.
+
+The generated demo first tries built-in browser WASI preview imports for common
+preview1 modules. If the module needs fuller WASI/WASIX behavior, it falls
+back to Wasmer JS with the same argv and Compose environment values. That
+fallback requires cross-origin isolation headers and public CDN access, but it
+still does not use a PocketStack backend.

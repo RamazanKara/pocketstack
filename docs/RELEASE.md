@@ -2,6 +2,10 @@
 
 PocketStack v1 releases are published from Git tags.
 
+Use this process when a commit is ready to become a downloadable GitHub
+release. For docs-only changes that do not need binary artifacts, a normal
+merge to `main` is enough.
+
 ## Local Gate
 
 Run the full local gate before tagging:
@@ -36,12 +40,31 @@ make verify-checksums
 
 ## Publish
 
-Use a fresh semantic version:
+Use a fresh semantic version and push the tag:
 
 ```sh
-git tag v1.0.2
-git push origin main v1.0.2
+VERSION=v1.0.3
+git tag "$VERSION"
+git push origin main "$VERSION"
 ```
 
 The GitHub `release` workflow runs GoReleaser and publishes Linux, macOS, and
 Windows binaries for amd64 and arm64 with checksums.
+
+## After Publish
+
+Check the release before announcing it:
+
+```sh
+gh release view "$VERSION"
+gh release download "$VERSION" --dir /tmp/pocketstack-release
+cd /tmp/pocketstack-release
+sha256sum -c checksums.txt
+```
+
+Also confirm the public Pages site if the release changed docs, Studio, public
+examples, or generated demo behavior:
+
+```sh
+curl -L --fail https://ramazankara.github.io/pocketstack/
+```

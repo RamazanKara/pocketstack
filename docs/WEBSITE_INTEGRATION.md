@@ -3,6 +3,9 @@
 PocketStack demos are static folders. Any website can link to them, embed them,
 or host them under a route.
 
+Use a link when the demo deserves its own page. Use an iframe when the demo is
+part of a docs page, announcement post, changelog, or product page.
+
 ## Generate
 
 ```sh
@@ -15,13 +18,14 @@ assets use relative paths.
 
 ## Link
 
-The lowest-friction integration is a normal link:
+The simplest integration is a normal link:
 
 ```html
 <a href="/demos/my-compose-demo/">Open live demo</a>
 ```
 
-Use this when the demo should get its own page and browser history.
+This gives the demo its own route, browser history, service-worker scope, and
+full viewport.
 
 ## Embed
 
@@ -38,6 +42,9 @@ You can embed a demo in an iframe:
 The iframe page is still a static PocketStack demo. It does not call a
 PocketStack backend.
 
+For embedded demos, give the iframe enough height for the dashboard and preview
+pane. `720px` is a good starting point for desktop docs pages.
+
 ## Host Under a Subpath
 
 PocketStack demos are subpath-safe. These are all valid:
@@ -50,6 +57,9 @@ https://example.com/releases/v1/pocketstack-demo/
 
 Upload the whole generated folder under that route. Do not move individual
 files out of the folder.
+
+If your website builder fingerprints or moves assets, configure it to copy the
+generated demo folder as a static directory.
 
 ## Headers
 
@@ -75,6 +85,9 @@ GitHub Pages is useful for public static previews and docs, but it does not let
 project repositories set arbitrary response headers. Demos that require
 COOP/COEP should be hosted on a header-capable static host for full behavior.
 
+The generated `pocketstack.manifest.json` includes host requirements so a
+custom website can warn users before loading a header-dependent demo.
+
 ## Service URLs For Custom UI
 
 Generated demos expose browser-only URLs that custom frontend code can call:
@@ -98,6 +111,9 @@ const payload = await response.json();
 These endpoints exist only inside the generated browser demo. They are not
 Docker networking, Postgres TCP, or a general backend proxy.
 
+Use them for custom demo controls, fixture explorers, or small query panels
+that live next to an embedded PocketStack demo.
+
 ## Embed In Documentation Sites
 
 For docs sites, copy the demo output into the published static directory:
@@ -115,3 +131,13 @@ docs-site/
 ```
 
 Then link or iframe `/demos/my-compose-demo/`.
+
+## Checklist
+
+Before publishing a demo from another website:
+
+- Confirm `pocketstack.manifest.json` loads from the final URL.
+- Open the generated dashboard and start each service.
+- Check whether `hostRequirements.crossOriginIsolationRequired` is true.
+- If embedding, verify the iframe height at desktop and mobile widths.
+- Keep the demo folder intact when copying it through the site build.
