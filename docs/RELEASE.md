@@ -43,7 +43,7 @@ make verify-checksums
 Use a fresh semantic version and push the tag:
 
 ```sh
-VERSION=v1.0.3
+VERSION=v1.0.4
 git tag "$VERSION"
 git push origin main "$VERSION"
 ```
