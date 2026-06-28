@@ -81,6 +81,12 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "    suggestion: %s\n", suggestion)
 		}
 	}
+	if len(analysis.Warnings) > 0 {
+		fmt.Fprintln(stdout, "\nWarnings:")
+		for _, warning := range analysis.Warnings {
+			fmt.Fprintf(stdout, "  - %s\n", warning)
+		}
+	}
 	if !analysis.BrowserNative {
 		fmt.Fprintln(stdout, "\nNext steps:")
 		for _, step := range analysis.NextSteps {

@@ -118,10 +118,19 @@ func AnalyzeFile(composeFile string) (*Analysis, error) {
 
 func Analyze(project *Project, projectRoot, composeFile string) Analysis {
 	names := make([]string, 0, len(project.Services))
-	for name := range project.Services {
+	skippedProfiles := make([]string, 0)
+	for name, service := range project.Services {
+		// Services gated behind `profiles:` are not started by a default
+		// `docker compose up`, so they should not count toward (or block)
+		// browser readiness. Mirror Compose's default activation set.
+		if len(service.Profiles) > 0 {
+			skippedProfiles = append(skippedProfiles, name)
+			continue
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	sort.Strings(skippedProfiles)
 
 	analysis := Analysis{
 		ComposeFile:   composeFile,
@@ -139,6 +148,10 @@ func Analyze(project *Project, projectRoot, composeFile string) Analysis {
 		}
 		analysis.HostRequirements = mergeHostRequirements(analysis.HostRequirements, serviceAnalysis.HostRequirements)
 		analysis.Services = append(analysis.Services, serviceAnalysis)
+	}
+
+	if len(skippedProfiles) > 0 {
+		analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("Ignored %d profile-gated service(s) not started by default: %s.", len(skippedProfiles), strings.Join(skippedProfiles, ", ")))
 	}
 
 	if !analysis.BrowserNative {
@@ -164,6 +177,12 @@ func analyzeService(name string, service Service, projectRoot string) ServiceAna
 		ProjectRoot: projectRoot,
 		Labels:      labels,
 		Explicit:    explicit,
+	}
+	if hasExtends(service) {
+		result := baseServiceAnalysis(context, AdapterUnsupported)
+		result.reject("extends: is not supported; PocketStack analyzes a single Compose file and does not resolve extended base services")
+		result.Suggestions = []string{"Flatten this service: copy the image, labels, ports, and volumes from the extended base directly into the Compose file PocketStack analyzes."}
+		return result
 	}
 	if explicit != "" {
 		if !supportedExplicitAdapter(explicit) {
@@ -737,34 +756,6 @@ func (s *ServiceAnalysis) addAsset(name, kind, source, target string) {
 		Source: source,
 		Target: target,
 	})
-}
-
-func addOptionalFile(result *ServiceAnalysis, projectRoot, rawPath, name, target string) {
-	path := resolveProjectPath(projectRoot, rawPath)
-	if path == "" {
-		return
-	}
-	if !fileExists(path) {
-		result.reject(fmt.Sprintf("%s file %s does not exist", name, path))
-		return
-	}
-	result.addAsset(name, "file", path, target)
-}
-
-func addOptionalFilePreserveExt(result *ServiceAnalysis, projectRoot, rawPath, name, targetBase string) {
-	path := resolveProjectPath(projectRoot, rawPath)
-	if path == "" {
-		return
-	}
-	if !fileExists(path) {
-		result.reject(fmt.Sprintf("%s file %s does not exist", name, path))
-		return
-	}
-	target := targetBase
-	if ext := filepath.Ext(path); ext != "" && filepath.Ext(targetBase) == "" {
-		target += ext
-	}
-	result.addAsset(name, "file", path, target)
 }
 
 func addOptionalSQLPath(result *ServiceAnalysis, projectRoot, rawPath, name, targetBase string, preserveExt bool) {
@@ -1370,14 +1361,6 @@ func resolveProjectPath(projectRoot, rawPath string) string {
 	return filepath.Clean(filepath.Join(projectRoot, rawPath))
 }
 
-func labelDefault(labels map[string]string, key, fallback string) string {
-	value := strings.TrimSpace(labels[key])
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
 func dbPersistMode(labels map[string]string, result *ServiceAnalysis) (string, bool) {
 	value := strings.TrimSpace(labels[LabelDBPersist])
 	if value == "" {
@@ -1504,6 +1487,17 @@ func defaultPortForImage(image string) int {
 	}
 }
 
+func hasExtends(service Service) bool {
+	switch value := service.Extends.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(value) != ""
+	default:
+		return true
+	}
+}
+
 func normalizedImage(image string) string {
 	image = strings.TrimSpace(strings.ToLower(image))
 	if image == "" {
@@ -1517,16 +1511,19 @@ func normalizedImage(image string) string {
 	if lastColon > lastSlash {
 		image = image[:lastColon]
 	}
-	return image
-}
-
-func contains(values []string, needle string) bool {
-	for _, value := range values {
-		if value == needle {
-			return true
+	// Strip an explicit registry host (the first path segment when it looks
+	// like a hostname, e.g. "docker.io/", "ghcr.io/", "localhost:5000/") so
+	// fully-qualified references normalize to the same repo name as the short
+	// form. Plain namespaces such as "nginxinc/" are preserved.
+	if first, rest, ok := strings.Cut(image, "/"); ok {
+		if strings.ContainsAny(first, ".:") || first == "localhost" {
+			image = rest
 		}
 	}
-	return false
+	// Strip Docker Hub's implicit "library/" namespace so "library/postgres"
+	// and "docker.io/library/postgres" match the bare "postgres".
+	image = strings.TrimPrefix(image, "library/")
+	return image
 }
 
 func compactReasons(values []string) []string {

@@ -1712,6 +1712,9 @@ async function renderPreview(analysis, fileIndex) {
   if (!entry) return;
   const iframe = document.createElement("iframe");
   iframe.title = `${staticService.name} preview`;
+  // Uploaded HTML is untrusted; isolate it in an opaque origin so it cannot
+  // touch the Studio page, its storage, or its parent DOM.
+  iframe.sandbox = "allow-scripts";
   iframe.srcdoc = await entry.file.text();
   els.previewLabel.textContent = staticService.name;
   els.previewPanel.append(iframe);

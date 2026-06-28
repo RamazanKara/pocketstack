@@ -1,4 +1,5 @@
-import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
@@ -21,17 +22,31 @@ await rm(pagesDir, { recursive: true, force: true });
 await mkdir(pagesDir, { recursive: true });
 await cp(join(root, "site"), pagesDir, { recursive: true });
 await cp(join(root, "studio"), join(pagesDir, "studio"), { recursive: true });
-await cp(join(root, "docs", "media"), join(pagesDir, "media"), { recursive: true });
+
+const mediaDir = join(root, "docs", "media");
+if (existsSync(mediaDir)) {
+  await cp(mediaDir, join(pagesDir, "media"), { recursive: true });
+} else {
+  console.warn("Skipping docs/media (not found); run `npm run media` to record the announcement clip.");
+}
+
 await mkdir(join(pagesDir, "demos"), { recursive: true });
 
+const includedDemos = [];
 for (const demo of demos) {
-  await cp(join(root, "dist", demo), join(pagesDir, "demos", demo), { recursive: true });
+  const source = join(root, "dist", demo);
+  if (!existsSync(source)) {
+    console.warn(`Skipping demo "${demo}": dist/${demo} not found. Run \`make smoke\` to generate the demos first.`);
+    continue;
+  }
+  await cp(source, join(pagesDir, "demos", demo), { recursive: true });
+  includedDemos.push(demo);
 }
 
 await writeFile(join(pagesDir, ".nojekyll"), "");
-await writeFile(join(pagesDir, "demos", "index.html"), demosIndex(demos));
+await writeFile(join(pagesDir, "demos", "index.html"), demosIndex(includedDemos));
 
-console.log(`Built GitHub Pages site at ${pagesDir}`);
+console.log(`Built GitHub Pages site at ${pagesDir} (${includedDemos.length}/${demos.length} demos).`);
 
 function demosIndex(values) {
   const links = values

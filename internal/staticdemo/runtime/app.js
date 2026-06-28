@@ -777,16 +777,22 @@ function createWASIPreviewImports(options) {
         if (fd !== 1 && fd !== 2) return WASI_ERRNO.badf;
         const currentView = view();
         const currentBytes = bytes();
+        const chunks = [];
         let written = 0;
-        let output = "";
         for (let index = 0; index < iovsLen; index += 1) {
           const pointer = currentView.getUint32(iovs + index * 8, true);
           const length = currentView.getUint32(iovs + index * 8 + 4, true);
-          output += decoder.decode(currentBytes.slice(pointer, pointer + length));
+          chunks.push(currentBytes.slice(pointer, pointer + length));
           written += length;
         }
+        const merged = new Uint8Array(written);
+        let mergeOffset = 0;
+        for (const chunk of chunks) {
+          merged.set(chunk, mergeOffset);
+          mergeOffset += chunk.length;
+        }
         currentView.setUint32(nwritten, written, true);
-        emitOutput(fd, output);
+        emitOutput(fd, decoder.decode(merged));
         return WASI_ERRNO.success;
       } catch (error) {
         log2(error.message, "wasi");
@@ -3551,6 +3557,23 @@ function setStatus(message, tone = "") {
 function setDetails(message) {
   $("#details").textContent = message;
 }
+var CDN = {
+  webcontainer: "https://esm.sh/@webcontainer/api@1",
+  pglite: "https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.2/dist/index.js",
+  wasmer: "https://unpkg.com/@wasmer/sdk@0.10.0/dist/index.mjs",
+  sqlJsBase: "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3"
+};
+var HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+}
+async function importModule(url, label) {
+  try {
+    return await import(url);
+  } catch (error) {
+    throw new Error(`Could not load ${label} from ${url}. This demo needs network access to that CDN and cannot run offline. (${error?.message || error})`);
+  }
+}
 function asset(service, name) {
   return (service.assets || []).find((item) => item.name === name);
 }
@@ -3612,7 +3635,7 @@ function renderPreview(service) {
   }
   const panel = document.createElement("section");
   panel.className = "panel";
-  panel.innerHTML = `<h2>${service.name}</h2><p>${descriptionFor(service)}</p>`;
+  panel.innerHTML = `<h2>${escapeHTML(service.name)}</h2><p>${descriptionFor(service)}</p>`;
   preview.append(panel);
 }
 function descriptionFor(service) {
@@ -3684,12 +3707,12 @@ async function resetSelected() {
 }
 async function startFrontend(service) {
   if (!crossOriginIsolated) {
-    log("This host is not cross-origin isolated. WebContainer requires COOP/COEP headers.", "warn");
+    throw new Error("This frontend demo needs cross-origin isolation. Serve it with COOP/COEP headers (PocketStack writes _headers / vercel.json / staticwebapp.config.json next to the demo). See docs/HOSTING.md.");
   }
   await ensureRuntimeServicesRegistered();
   const project = asset(service, "project");
   if (!project) throw new Error("frontend project asset missing");
-  const { WebContainer } = await import("https://esm.sh/@webcontainer/api");
+  const { WebContainer } = await importModule(CDN.webcontainer, "the WebContainer runtime");
   let container = state.webcontainers.get(service.name);
   if (!container) {
     container = await WebContainer.boot();
@@ -3806,10 +3829,10 @@ async function runWASIWithWasmer(bytes, service, args, env, originalError) {
   if (!crossOriginIsolated) {
     log("Wasmer JS fallback requires COOP/COEP headers for cross-origin isolation.", "warn");
   }
-  const wasmer = await import("https://unpkg.com/@wasmer/sdk@0.10.0/dist/index.mjs");
+  const wasmer = await importModule(CDN.wasmer, "the Wasmer JS fallback");
   if (typeof wasmer.init === "function") await wasmer.init();
   if (typeof wasmer.runWasix !== "function") {
-    throw originalError;
+    throw new Error(`The Wasmer JS fallback did not expose runWasix; the WASI module could not run. (original preview error: ${originalError.message})`);
   }
   const instance = await wasmer.runWasix(bytes, wasmerRunOptions(service, args, env));
   const output = await instance.wait();
@@ -3833,6 +3856,9 @@ async function startMock(service) {
 }
 async function ensureRuntimeServicesRegistered() {
   if (!runtimeWorkerNeeded()) return;
+  if (location.protocol === "file:") {
+    throw new Error("mock-http and browser-database demos use a service worker, which does not run from file://. Serve the demo over http(s) \u2014 e.g. run `npx serve` inside the demo folder. See docs/HOSTING.md.");
+  }
   if (!("serviceWorker" in navigator)) {
     throw new Error("This browser does not support service workers.");
   }
@@ -4008,10 +4034,10 @@ async function loadFixtureRoutes(service) {
 function renderMockRoutes(service, routes) {
   const panel = document.createElement("section");
   panel.className = "panel";
-  panel.innerHTML = `<h2>${service.name}</h2>${routes.map((route) => {
+  panel.innerHTML = `<h2>${escapeHTML(service.name)}</h2>${routes.map((route) => {
     const displayPath = routePathWithQuery(route);
     const url = mockRouteURL(service, samplePath(displayPath));
-    return `<p><code>${route.method} ${mockRouteURL(service, displayPath)}</code> <button type="button" data-try="${url}">Try</button></p>`;
+    return `<p><code>${escapeHTML(route.method)} ${escapeHTML(mockRouteURL(service, displayPath))}</code> <button type="button" data-try="${escapeHTML(url)}">Try</button></p>`;
   }).join("")}<pre style="height:auto;min-height:120px"></pre>`;
   const output = panel.querySelector("pre");
   panel.querySelectorAll("[data-try]").forEach((button) => {
@@ -4039,14 +4065,14 @@ async function startPGlite(service, options = {}) {
     if (render) renderQueryPanel(service, query2);
     return query2;
   }
-  const { PGlite } = await import("https://cdn.jsdelivr.net/npm/@electric-sql/pglite/dist/index.js");
+  const { PGlite } = await importModule(CDN.pglite, "PGlite");
   const db = new PGlite(pgliteDataDir(service));
   const bootstrapped = await ensurePGliteBootstrapped(db, () => executeSQLAssets(db, service), log);
   if (!bootstrapped) log("Loaded persisted PGlite database.");
   log("PGlite database initialized.");
   const query = async (sql) => {
-    const rows = await db.query(sql);
-    return JSON.stringify(rows.rows || rows, null, 2);
+    const results = await db.exec(sql);
+    return JSON.stringify(results, null, 2);
   };
   state.databases.set(service.name, query);
   state.databaseHandles.set(service.name, db);
@@ -4060,9 +4086,13 @@ async function startSQLite(service, options = {}) {
     if (render) renderQueryPanel(service, query2);
     return query2;
   }
-  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js");
+  try {
+    await loadScript(`${CDN.sqlJsBase}/sql-wasm.js`);
+  } catch {
+    throw new Error(`Could not load sql.js from ${CDN.sqlJsBase}. This demo needs network access to that CDN and cannot run offline.`);
+  }
   const SQL = await window.initSqlJs({
-    locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+    locateFile: (file) => `${CDN.sqlJsBase}/${file}`
   });
   const opened = await openSQLiteDatabase(SQL, service);
   const db = opened.db;
@@ -4163,7 +4193,7 @@ function sqliteStoreRequest(mode, createRequest) {
 function renderQueryPanel(service, runQuery) {
   const panel = document.createElement("section");
   panel.className = "panel";
-  panel.innerHTML = `<h2>${service.name}</h2><textarea rows="6" style="width:100%">select 1;</textarea><p><button type="button">Run query</button></p><pre style="height:auto;min-height:120px"></pre>`;
+  panel.innerHTML = `<h2>${escapeHTML(service.name)}</h2><textarea rows="6" style="width:100%">select 1;</textarea><p><button type="button">Run query</button></p><pre style="height:auto;min-height:120px"></pre>`;
   const textarea = panel.querySelector("textarea");
   const output = panel.querySelector("pre");
   panel.querySelector("button").addEventListener("click", async () => {

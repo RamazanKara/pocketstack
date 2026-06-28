@@ -1187,6 +1187,160 @@ services:
 	}
 }
 
+func TestAnalyzePortRangesDoNotAbort(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "site"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "site", "index.html"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeFile := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte(`
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "3000-3005:3000-3005"
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := AnalyzeFile(composeFile)
+	if err != nil {
+		t.Fatalf("port range aborted analysis: %v", err)
+	}
+	if analysis.Mode != ModeBrowserNative || len(analysis.Services) != 1 || !analysis.Services[0].BrowserNative {
+		t.Fatalf("analysis = %#v", analysis)
+	}
+}
+
+func TestParsePortNumberRangesAndJunk(t *testing.T) {
+	cases := map[string]int{
+		"80":         80,
+		"3000-3005":  3000,
+		" 8080 ":     8080,
+		"":           0,
+		"not-a-port": 0,
+		"5173/tcp":   0, // protocol is split off before this helper is called
+	}
+	for input, want := range cases {
+		if got := parsePortNumber(input); got != want {
+			t.Errorf("parsePortNumber(%q) = %d, want %d", input, got, want)
+		}
+	}
+}
+
+func TestAnalyzeRegistryQualifiedImagesAreRecognized(t *testing.T) {
+	for _, image := range []string{"docker.io/library/postgres:16", "library/postgres", "postgres:16"} {
+		t.Run(image, func(t *testing.T) {
+			root := t.TempDir()
+			initDir := filepath.Join(root, "db-init")
+			if err := os.Mkdir(initDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(initDir, "01-schema.sql"), []byte("create table demo(id integer);\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			composeFile := filepath.Join(root, "compose.yaml")
+			if err := os.WriteFile(composeFile, []byte(`
+services:
+  db:
+    image: `+image+`
+    volumes:
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			analysis, err := AnalyzeFile(composeFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := analysis.Services[0]
+			if service.Adapter != AdapterPostgresPGlite || !service.BrowserNative {
+				t.Fatalf("image %q: adapter = %q browserNative = %v (want postgres-pglite)", image, service.Adapter, service.BrowserNative)
+			}
+		})
+	}
+}
+
+func TestNormalizedImagePreservesPlainNamespace(t *testing.T) {
+	// A registry host must be stripped, but a plain Docker Hub namespace must
+	// not be, or distinct images would collide.
+	if got := normalizedImage("nginxinc/nginx-unprivileged:latest"); got != "nginxinc/nginx-unprivileged" {
+		t.Fatalf("normalizedImage stripped a plain namespace: %q", got)
+	}
+	if got := normalizedImage("ghcr.io/acme/node:20"); got != "acme/node" {
+		t.Fatalf("normalizedImage(ghcr.io/acme/node) = %q", got)
+	}
+}
+
+func TestAnalyzeProfileGatedServicesAreSkipped(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "site"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "site", "index.html"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeFile := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte(`
+services:
+  web:
+    image: nginx:alpine
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+  debug-cache:
+    image: redis:7
+    profiles:
+      - debug
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := AnalyzeFile(composeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.Services) != 1 || analysis.Services[0].Name != "web" {
+		t.Fatalf("profile-gated service was not skipped: %#v", analysis.Services)
+	}
+	if analysis.Mode != ModeBrowserNative || analysis.Readiness.Status != "ready" || analysis.Readiness.Score != 100 {
+		t.Fatalf("readiness = %#v mode = %s", analysis.Readiness, analysis.Mode)
+	}
+	if !containsReason(analysis.Warnings, "profile-gated") || !containsReason(analysis.Warnings, "debug-cache") {
+		t.Fatalf("expected a profile-skip warning, got %#v", analysis.Warnings)
+	}
+}
+
+func TestAnalyzeExtendsIsUnsupportedWithHonestReason(t *testing.T) {
+	root := t.TempDir()
+	composeFile := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte(`
+services:
+  web:
+    extends:
+      file: base.yaml
+      service: web
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	analysis, err := AnalyzeFile(composeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := analysis.Services[0]
+	if service.BrowserNative || service.Adapter != AdapterUnsupported {
+		t.Fatalf("extends service = %#v", service)
+	}
+	if !containsReason(service.Unsupported, "extends:") {
+		t.Fatalf("expected an explicit extends reason, got %#v", service.Unsupported)
+	}
+	if len(service.Suggestions) == 0 {
+		t.Fatalf("expected a flatten suggestion, got %#v", service.Suggestions)
+	}
+}
+
 func containsReason(reasons []string, substring string) bool {
 	for _, reason := range reasons {
 		if strings.Contains(reason, substring) {

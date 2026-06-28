@@ -37,6 +37,30 @@ test("WASI example writes hello output through fd_write", async () => {
   assert.deepEqual(output, [{ message: "Hello from PocketStack WASI", tone: "" }]);
 });
 
+test("WASI fd_write decodes UTF-8 split across iovec boundaries", async () => {
+  const { createWASIPreviewImports } = await loadWASIHelpers();
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const instance = { exports: { memory } };
+  const lines = [];
+  const imports = createWASIPreviewImports({
+    service: { name: "u" },
+    getInstance: () => instance,
+    log: (message) => lines.push(message),
+  });
+  const bytes = new Uint8Array(memory.buffer);
+  const view = new DataView(memory.buffer);
+  // "héllo\n" with the two bytes of "é" (0xC3 0xA9) split across two iovecs.
+  bytes.set([0x68, 0xc3], 200);
+  bytes.set([0xa9, 0x6c, 0x6c, 0x6f, 0x0a], 300);
+  view.setUint32(0, 200, true);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, 300, true);
+  view.setUint32(12, 5, true);
+  assert.equal(imports.fd_write(1, 0, 2, 64), 0);
+  assert.equal(view.getUint32(64, true), 7);
+  assert.deepEqual(lines, ["héllo"]);
+});
+
 test("WASI preview exposes argv and environment memory", async () => {
   const { WASI_ERRNO, createWASIPreviewImports, normalizeEnvironmentRecord, wasmerRunOptions } = await loadWASIHelpers();
   const memory = new WebAssembly.Memory({ initial: 1 });

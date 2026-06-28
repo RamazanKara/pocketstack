@@ -43,7 +43,7 @@ Think:
 - WASI demos
 - open-source projects that need a first-click experience
 
-PocketStack v1.0.2 is live now.
+PocketStack v1.1.0 is live now.
 
 It includes a hosted Studio, generated demo examples, release binaries, and a
 short live demo video.
@@ -55,7 +55,7 @@ GitHub:
 https://github.com/RamazanKara/pocketstack
 
 Release:
-https://github.com/RamazanKara/pocketstack/releases/tag/v1.0.2
+https://github.com/RamazanKara/pocketstack/releases/tag/v1.1.0
 
 This is early, but it already feels like the right direction:
 
@@ -85,7 +85,7 @@ The niche is smaller and sharper:
 
 if your stack is demo-shaped, PocketStack gives you a link people can click.
 
-v1.0.2 is live now with hosted Studio, example demos, and release binaries.
+v1.1.0 is live now with hosted Studio, example demos, and release binaries.
 
 Try the hosted Studio:
 https://ramazankara.github.io/pocketstack/

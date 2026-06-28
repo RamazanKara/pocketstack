@@ -23,6 +23,15 @@ go vet ./...
 make smoke
 ```
 
+`make smoke` builds the binary, regenerates every example demo, and runs the
+generated-demo checks. `make release-check` additionally runs `go vet`, a
+GoReleaser snapshot build, and checksum verification — run it before preparing a
+release.
+
+Work on a branch and open a pull request against `main`. Note user-facing
+changes in [CHANGELOG.md](CHANGELOG.md) under an `Unreleased`/next-version
+heading; the [release process](docs/RELEASE.md) covers tagging and publishing.
+
 New adapters should add:
 
 - analyzer classification tests;

@@ -21,6 +21,12 @@ Studio mirrors the CLI analyzer closely enough to flag:
 - the WebContainer bridge used for mock/database demo endpoints;
 - stateful or daemon-style services that need browser-native demo substitutes.
 
+Because Studio runs in the browser, it adds a "needs files" state the CLI does
+not have: when a service bind-mounts project files the browser never received,
+Studio asks for them instead of reporting the service unsupported outright. The
+adapter verdicts match `pocketstack analyze`, but the exact wording for an
+unsupported service can differ slightly.
+
 Use the public Studio:
 
 ```text

@@ -27,6 +27,7 @@ type Service struct {
 	Expose      []PortSpec   `yaml:"expose,omitempty" json:"expose,omitempty"`
 	Volumes     []VolumeSpec `yaml:"volumes,omitempty" json:"volumes,omitempty"`
 	DependsOn   any          `yaml:"depends_on,omitempty" json:"dependsOn,omitempty"`
+	Extends     any          `yaml:"extends,omitempty" json:"extends,omitempty"`
 	Profiles    []string     `yaml:"profiles,omitempty" json:"profiles,omitempty"`
 	WorkingDir  string       `yaml:"working_dir,omitempty" json:"workingDir,omitempty"`
 	Environment any          `yaml:"environment,omitempty" json:"environment,omitempty"`
@@ -107,15 +108,6 @@ func (s Service) EnvironmentList() []string {
 	return values
 }
 
-func (s Service) EnvFileList() []string {
-	specs := s.EnvFiles()
-	values := make([]string, 0, len(specs))
-	for _, spec := range specs {
-		values = append(values, spec.Path)
-	}
-	return values
-}
-
 func (s Service) EnvFiles() []EnvFileSpec {
 	switch typed := s.EnvFile.(type) {
 	case string:
@@ -186,17 +178,6 @@ func compactEnvFileSpecs(values []EnvFileSpec) []EnvFileSpec {
 	return result
 }
 
-func compactStrings(values []string) []string {
-	result := []string{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			result = append(result, value)
-		}
-	}
-	return result
-}
-
 type PortSpec struct {
 	Raw       string `json:"raw,omitempty"`
 	Target    int    `json:"target,omitempty"`
@@ -215,11 +196,7 @@ func (p *PortSpec) UnmarshalYAML(node *yaml.Node) error {
 			value := node.Content[i+1].Value
 			switch key {
 			case "target":
-				target, err := strconv.Atoi(value)
-				if err != nil {
-					return fmt.Errorf("invalid port target %q: %w", value, err)
-				}
-				p.Target = target
+				p.Target = parsePortNumber(value)
 			case "published":
 				p.Published = value
 			case "protocol":
@@ -246,16 +223,30 @@ func (p *PortSpec) parseScalar(raw string) error {
 		}
 	}
 	segments := strings.Split(portPart, ":")
-	targetPart := segments[len(segments)-1]
-	target, err := strconv.Atoi(targetPart)
-	if err != nil {
-		return fmt.Errorf("invalid compose port %q: %w", raw, err)
-	}
-	p.Target = target
+	p.Target = parsePortNumber(segments[len(segments)-1])
 	if len(segments) >= 2 {
 		p.Published = segments[len(segments)-2]
 	}
 	return nil
+}
+
+// parsePortNumber extracts a single port number from a Compose port token. It
+// tolerates ranges ("3000-3005" -> 3000) and non-numeric or empty values
+// (-> 0) so a single unusual port mapping never aborts analysis of the whole
+// project.
+func parsePortNumber(value string) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if before, _, ok := strings.Cut(value, "-"); ok {
+		value = strings.TrimSpace(before)
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil {
+		return 0
+	}
+	return port
 }
 
 type VolumeSpec struct {

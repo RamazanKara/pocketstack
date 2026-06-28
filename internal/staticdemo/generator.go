@@ -676,7 +676,7 @@ var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
     </nav>
     <main>
       <div class="status">
-        <span id="status">Loading runtime</span>
+        <span id="status" role="status" aria-live="polite">Loading runtime</span>
         <span>browser-only</span>
       </div>
       <section id="preview" class="preview"></section>
@@ -687,7 +687,7 @@ var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
           <button type="button" id="reset">Reset</button>
         </span>
       </div>
-      <pre id="logs" aria-label="Service logs"></pre>
+      <pre id="logs" role="log" aria-live="polite" aria-label="Service logs"></pre>
     </main>
   </div>
   <script type="module" src="./app.js"></script>

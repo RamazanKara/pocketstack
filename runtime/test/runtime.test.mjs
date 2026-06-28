@@ -43,6 +43,15 @@ test("runtime script surfaces service compatibility warnings", async () => {
   assert.match(source, /public browser runtime packages or npm dependencies/);
 });
 
+test("runtime escapes untrusted values and pins CDN runtime packages", async () => {
+  const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
+  // Untrusted Compose/OpenAPI strings must be escaped before innerHTML.
+  assert.match(source, /escapeHTML/);
+  // Browser runtime packages must be version-pinned, not floating on latest.
+  assert.match(source, /@webcontainer\/api@\d/);
+  assert.match(source, /@electric-sql\/pglite@\d/);
+});
+
 test("mock OpenAPI YAML parser is bundled into generated demos", async () => {
   const source = await readFile(new URL("../../internal/staticdemo/runtime/app.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /esm\.sh\/js-yaml/);

@@ -209,16 +209,25 @@ function createWASIPreviewImports(options) {
         if (fd !== 1 && fd !== 2) return WASI_ERRNO.badf;
         const currentView = view();
         const currentBytes = bytes();
+        const chunks = [];
         let written = 0;
-        let output = "";
         for (let index = 0; index < iovsLen; index += 1) {
           const pointer = currentView.getUint32(iovs + index * 8, true);
           const length = currentView.getUint32(iovs + index * 8 + 4, true);
-          output += decoder.decode(currentBytes.slice(pointer, pointer + length));
+          chunks.push(currentBytes.slice(pointer, pointer + length));
           written += length;
         }
+        // Concatenate every iovec before decoding so a multi-byte UTF-8
+        // sequence split across iovec boundaries is not corrupted into
+        // replacement characters.
+        const merged = new Uint8Array(written);
+        let mergeOffset = 0;
+        for (const chunk of chunks) {
+          merged.set(chunk, mergeOffset);
+          mergeOffset += chunk.length;
+        }
         currentView.setUint32(nwritten, written, true);
-        emitOutput(fd, output);
+        emitOutput(fd, decoder.decode(merged));
         return WASI_ERRNO.success;
       } catch (error) {
         log(error.message, "wasi");

@@ -40,6 +40,28 @@ The short version:
 Unsupported does not mean impossible forever. It means there is no honest
 browser adapter for that behavior yet.
 
+## Compose Features
+
+PocketStack analyzes a single Compose file and maps the default service set to
+browser adapters. A few Compose directives are handled specifically:
+
+- `profiles:` — services gated behind a profile are not started by a default
+  `docker compose up`, so PocketStack skips them. They do not count toward, or
+  block, browser readiness, and the analysis warns when services are skipped.
+- `extends:` — not supported. PocketStack does not resolve an extended base
+  service. Flatten the service (inline its image, labels, ports, and volumes)
+  before analyzing.
+- Multiple Compose files / overrides — pass a single file with `-f`. Merge any
+  overrides yourself first.
+- `depends_on:` and `healthcheck:` — parsed but ignored. A static demo has no
+  startup ordering or health gating.
+- Port ranges such as `3000-3005:3000-3005` are accepted; the first port of the
+  range is used and adapter selection does not depend on the exact port.
+- Image references are normalized, so short names (`postgres`), Docker Hub
+  official names (`library/postgres`), and registry-qualified names
+  (`docker.io/library/postgres:16`, `ghcr.io/org/app`) resolve to the same
+  adapter.
+
 ## Readiness Report
 
 Every analysis result includes:

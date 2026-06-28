@@ -24,7 +24,8 @@ Then go deeper:
   for the public site and generated demos.
 - [Release process](RELEASE.md): local checks, GoReleaser, checksums, and tag
   publishing.
-- [v1.0.3 release notes](RELEASE_NOTES_v1.0.3.md): current release highlights
+- [Changelog](../CHANGELOG.md): version history at a glance.
+- [v1.1.0 release notes](RELEASE_NOTES_v1.1.0.md): current release highlights
   and constraints.
 
 PocketStack v1 is browser-only. Unsupported Compose features should remain
