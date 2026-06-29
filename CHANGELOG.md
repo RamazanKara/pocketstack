@@ -4,7 +4,7 @@ All notable changes to PocketStack are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Per-release detail lives in [docs/RELEASE_NOTES_v*.md](docs/).
+Per-release detail lives under [docs/release-notes/](docs/release-notes/index.md).
 
 ## [1.1.0] - 2026-06-28
 
@@ -48,14 +48,14 @@ Per-release detail lives in [docs/RELEASE_NOTES_v*.md](docs/).
 Refocused the product around browser-native readiness: `analyze` reports a
 readiness score, blockers, suggestions, and next steps; clearer primary
 unsupported reasons; conversion guide. See
-[release notes](docs/RELEASE_NOTES_v1.0.3.md).
+[release notes](docs/release-notes/v1.0.3.md).
 
 ## [1.0.2] - 2026-05-27
 Hosted Studio, generated example demos, and the GitHub Pages site. See
-[release notes](docs/RELEASE_NOTES_v1.0.2.md).
+[release notes](docs/release-notes/v1.0.2.md).
 
 ## [1.0.1] - 2026-05-26
-Hardening release. See [release notes](docs/RELEASE_NOTES_v1.0.1.md).
+Hardening release. See [release notes](docs/release-notes/v1.0.1.md).
 
 ## [1.0.0] - 2026-05-26
 Initial browser-native PocketStack release.

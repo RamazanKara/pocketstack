@@ -30,7 +30,8 @@ release.
 
 Work on a branch and open a pull request against `main`. Note user-facing
 changes in [CHANGELOG.md](CHANGELOG.md) under an `Unreleased`/next-version
-heading; the [release process](docs/RELEASE.md) covers tagging and publishing.
+heading; the [release process](docs/contribute/releasing.md) covers tagging and
+publishing.
 
 New adapters should add:
 
@@ -38,5 +39,8 @@ New adapters should add:
 - generated manifest coverage;
 - browser runtime tests;
 - an example Compose project;
-- documentation in the compatibility matrix;
+- documentation under [docs/adapters/](docs/adapters/index.md);
 - clear unsupported-feature reporting for nearby cases that still cannot work.
+
+The full developer guide — repo layout, prerequisites, and the new-adapter
+walkthrough — lives at [docs/contribute/](docs/contribute/index.md).

@@ -20,14 +20,21 @@ const demos = [
 
 await rm(pagesDir, { recursive: true, force: true });
 await mkdir(pagesDir, { recursive: true });
-await cp(join(root, "site"), pagesDir, { recursive: true });
-await cp(join(root, "studio"), join(pagesDir, "studio"), { recursive: true });
+await cp(join(root, "web", "site"), pagesDir, { recursive: true });
+await cp(join(root, "web", "studio"), join(pagesDir, "studio"), { recursive: true });
 
 const mediaDir = join(root, "docs", "media");
 if (existsSync(mediaDir)) {
   await cp(mediaDir, join(pagesDir, "media"), { recursive: true });
 } else {
   console.warn("Skipping docs/media (not found); run `npm run media` to record the announcement clip.");
+}
+
+const docsDist = join(root, "docs", ".vitepress", "dist");
+if (existsSync(docsDist)) {
+  await cp(docsDist, join(pagesDir, "docs"), { recursive: true });
+} else {
+  console.warn("Skipping docs site (docs/.vitepress/dist not found); run `npm run docs:build` first.");
 }
 
 await mkdir(join(pagesDir, "demos"), { recursive: true });
