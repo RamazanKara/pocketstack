@@ -9,38 +9,34 @@ npm run test:browsers
 
 The suite serves `dist/pages` locally and checks:
 
-- landing page loads;
+- the landing page loads;
 - Studio loads;
 - Studio sample analysis runs in Chromium-based browsers;
-- generated static demo dashboard loads;
-- generated manifest loads;
-- static demo preview loads.
+- the generated static demo dashboard loads;
+- the generated manifest loads;
+- the static demo preview loads.
 
-CI installs Playwright browsers and runs the suite against:
+CI installs Playwright browsers and runs the suite against Chrome/Chromium,
+Microsoft Edge, and Safari-class WebKit. Locally, the test skips browsers that
+are not installed unless `POCKETSTACK_REQUIRE_BROWSERS=1` is set.
 
-- Chrome/Chromium;
-- Microsoft Edge;
-- Safari-class WebKit.
-
-Locally, the test skips browsers that are not installed unless
-`POCKETSTACK_REQUIRE_BROWSERS=1` is set.
-
-## When To Run It
+## When to run it
 
 Run the browser suite after changes to:
 
-- `site/`
-- `studio/`
+- `web/site`
+- `web/studio`
 - generated demo HTML/CSS/runtime behavior
 - `scripts/build-pages-site.mjs`
 - GitHub Pages workflow configuration
 
-The suite is intentionally a smoke test. It catches broken public navigation,
+::: info
+This is intentionally a **smoke test**. It catches broken public navigation,
 missing generated assets, dashboard regressions, and browser-launch issues. It
-does not replace adapter unit tests or Playwright coverage for every generated
-demo category.
+does not replace adapter unit tests or per-demo Playwright coverage.
+:::
 
-## Reading Failures
+## Reading failures
 
 An Edge skip on a local machine usually means Microsoft Edge is not installed.
 CI treats browser skips as failures because it sets

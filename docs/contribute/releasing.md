@@ -1,12 +1,13 @@
-# Release
+# Releasing
 
-PocketStack v1 releases are published from Git tags.
+PocketStack v1 releases are published from Git tags. Use this process when a
+commit is ready to become a downloadable GitHub release. For docs-only changes
+that do not need binary artifacts, a normal merge to `main` is enough.
 
-Use this process when a commit is ready to become a downloadable GitHub
-release. For docs-only changes that do not need binary artifacts, a normal
-merge to `main` is enough.
+This is the maintainer process. For day-to-day contribution checks, see
+[contributing](/contribute/).
 
-## Local Gate
+## Local gate
 
 Run the full local gate before tagging:
 
@@ -16,12 +17,11 @@ make release-check
 ```
 
 That target runs Go tests, runtime tests, `go vet`, generated-demo smoke tests,
-a GoReleaser snapshot, and checksum verification.
+a GoReleaser snapshot, and checksum verification. The Node toolchain targets
+Node 26 (CI and release workflows use `actions/setup-node` with
+`node-version: "26"`).
 
-The Node toolchain targets Node 26; CI and release workflows use
-`actions/setup-node` with `node-version: "26"`.
-
-The individual commands are:
+The individual commands `release-check` covers are:
 
 ```sh
 npm ci
@@ -51,7 +51,7 @@ git push origin main "$VERSION"
 The GitHub `release` workflow runs GoReleaser and publishes Linux, macOS, and
 Windows binaries for amd64 and arm64 with checksums.
 
-## After Publish
+## After publish
 
 Check the release before announcing it:
 
@@ -68,3 +68,8 @@ examples, or generated demo behavior:
 ```sh
 curl -L --fail https://ramazankara.github.io/pocketstack/
 ```
+
+::: tip
+Record user-facing changes in `CHANGELOG.md` and add a per-version entry under
+[release notes](/release-notes/) so the published notes match the tag.
+:::

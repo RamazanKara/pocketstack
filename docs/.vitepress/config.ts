@@ -10,8 +10,8 @@ export default defineConfig({
   lang: 'en-US',
   cleanUrls: true,
   lastUpdated: true,
-  // Tightened to a stricter mode in Phase 4 once every page exists.
-  ignoreDeadLinks: true,
+  // Strict: the build fails on broken internal links.
+  ignoreDeadLinks: false,
   themeConfig: {
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },

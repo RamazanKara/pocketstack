@@ -38,7 +38,7 @@ archives:
       - SECURITY.md
       - CONTRIBUTING.md
       - CODE_OF_CONDUCT.md
-      - docs/*.md
+      - docs/**/*.md
       - docs/media/*
       - examples/**/*
       - web/site/*

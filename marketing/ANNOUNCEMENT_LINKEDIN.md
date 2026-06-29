@@ -52,10 +52,10 @@ Try it here:
 https://ramazankara.github.io/pocketstack/
 
 GitHub:
-https://github.com/RamazanKara/pocketstack
+https://github.com/ramazankara/pocketstack
 
 Release:
-https://github.com/RamazanKara/pocketstack/releases/tag/v1.1.0
+https://github.com/ramazankara/pocketstack/releases/tag/v1.1.0
 
 This is early, but it already feels like the right direction:
 
@@ -91,7 +91,7 @@ Try the hosted Studio:
 https://ramazankara.github.io/pocketstack/
 
 GitHub:
-https://github.com/RamazanKara/pocketstack
+https://github.com/ramazankara/pocketstack
 
 #opensource #devtools #docker #buildinpublic
 
