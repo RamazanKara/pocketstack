@@ -6,6 +6,24 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Per-release detail lives under [docs/release-notes/](docs/release-notes/index.md).
 
+## [1.1.1] - 2026-06-29
+
+Documentation and internal-structure release. The CLI behaves identically to
+v1.1.0.
+
+### Added
+- Published documentation site (VitePress) at `/docs/` with a new information
+  architecture — getting-started, installation, CLI reference, concepts and
+  glossary, troubleshooting, per-adapter guides, the manifest and service-URL
+  references, and a developer guide.
+
+### Changed
+- Internal Go layout: split `internal/compose` into `compose` (model) and
+  `analyzer` (analysis); renamed `internal/staticdemo` → `internal/generator`.
+  Browser code (`runtime`, `studio`, `site`) moved under `web/`. Import paths
+  changed; CLI behavior unchanged.
+- README slimmed and documentation deduplicated to single sources of truth.
+
 ## [1.1.0] - 2026-06-28
 
 ### Added
@@ -60,6 +78,7 @@ Hardening release. See [release notes](docs/release-notes/v1.0.1.md).
 ## [1.0.0] - 2026-05-26
 Initial browser-native PocketStack release.
 
+[1.1.1]: https://github.com/ramazankara/pocketstack/releases/tag/v1.1.1
 [1.1.0]: https://github.com/ramazankara/pocketstack/releases/tag/v1.1.0
 [1.0.3]: https://github.com/ramazankara/pocketstack/releases/tag/v1.0.3
 [1.0.2]: https://github.com/ramazankara/pocketstack/releases/tag/v1.0.2
