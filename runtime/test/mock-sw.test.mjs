@@ -44,7 +44,7 @@ async function loadWorker(options = {}) {
       skipWaiting: () => Promise.resolve(),
     },
   };
-  const source = await readFile(new URL("../../internal/staticdemo/runtime/mock-sw.js", import.meta.url), "utf8");
+  const source = await readFile(new URL("../../internal/generator/runtime/mock-sw.js", import.meta.url), "utf8");
   vm.runInNewContext(source, context);
 
   return {

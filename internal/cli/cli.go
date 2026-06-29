@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ramazankara/pocketstack/internal/compose"
-	"github.com/ramazankara/pocketstack/internal/staticdemo"
+	"github.com/ramazankara/pocketstack/internal/analyzer"
+	"github.com/ramazankara/pocketstack/internal/generator"
 )
 
 var version = "dev"
@@ -51,7 +51,7 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	analysis, err := compose.AnalyzeFile(resolvedCompose)
+	analysis, err := analyzer.AnalyzeFile(resolvedCompose)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -109,7 +109,7 @@ func demo(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	result, err := staticdemo.Generate(staticdemo.Options{
+	result, err := generator.Generate(generator.Options{
 		ComposeFile: resolvedCompose,
 		OutputDir:   *outputDir,
 	})

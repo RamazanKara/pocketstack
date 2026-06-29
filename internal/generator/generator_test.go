@@ -1,4 +1,4 @@
-package staticdemo
+package generator
 
 import (
 	"os"

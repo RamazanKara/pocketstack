@@ -1,4 +1,4 @@
-package staticdemo
+package generator
 
 import (
 	"crypto/sha256"
@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ramazankara/pocketstack/internal/compose"
+	"github.com/ramazankara/pocketstack/internal/analyzer"
 )
 
 //go:embed runtime/*
@@ -35,30 +35,30 @@ type Result struct {
 }
 
 type Manifest struct {
-	Version          string                   `json:"version"`
-	GeneratedAt      string                   `json:"generatedAt"`
-	Mode             string                   `json:"mode"`
-	BrowserOnly      bool                     `json:"browserOnly"`
-	ComposeFile      string                   `json:"composeFile"`
-	StorageNamespace string                   `json:"storageNamespace"`
-	Readiness        compose.Readiness        `json:"readiness"`
-	HostRequirements compose.HostRequirements `json:"hostRequirements,omitempty"`
-	Warnings         []string                 `json:"warnings,omitempty"`
-	NextSteps        []string                 `json:"nextSteps,omitempty"`
-	Services         []ManifestService        `json:"services"`
+	Version          string                    `json:"version"`
+	GeneratedAt      string                    `json:"generatedAt"`
+	Mode             string                    `json:"mode"`
+	BrowserOnly      bool                      `json:"browserOnly"`
+	ComposeFile      string                    `json:"composeFile"`
+	StorageNamespace string                    `json:"storageNamespace"`
+	Readiness        analyzer.Readiness        `json:"readiness"`
+	HostRequirements analyzer.HostRequirements `json:"hostRequirements,omitempty"`
+	Warnings         []string                  `json:"warnings,omitempty"`
+	NextSteps        []string                  `json:"nextSteps,omitempty"`
+	Services         []ManifestService         `json:"services"`
 }
 
 type ManifestService struct {
-	Name             string                   `json:"name"`
-	Image            string                   `json:"image,omitempty"`
-	Adapter          string                   `json:"adapter"`
-	BrowserNative    bool                     `json:"browserNative"`
-	PublicPort       int                      `json:"publicPort,omitempty"`
-	BrowserPath      string                   `json:"browserPath,omitempty"`
-	Assets           []ManifestAsset          `json:"assets,omitempty"`
-	Config           map[string]string        `json:"config,omitempty"`
-	Warnings         []string                 `json:"warnings,omitempty"`
-	HostRequirements compose.HostRequirements `json:"hostRequirements,omitempty"`
+	Name             string                    `json:"name"`
+	Image            string                    `json:"image,omitempty"`
+	Adapter          string                    `json:"adapter"`
+	BrowserNative    bool                      `json:"browserNative"`
+	PublicPort       int                       `json:"publicPort,omitempty"`
+	BrowserPath      string                    `json:"browserPath,omitempty"`
+	Assets           []ManifestAsset           `json:"assets,omitempty"`
+	Config           map[string]string         `json:"config,omitempty"`
+	Warnings         []string                  `json:"warnings,omitempty"`
+	HostRequirements analyzer.HostRequirements `json:"hostRequirements,omitempty"`
 }
 
 type ManifestAsset struct {
@@ -73,7 +73,7 @@ func Generate(options Options) (*Result, error) {
 	if options.GeneratedAt.IsZero() {
 		options.GeneratedAt = time.Now().UTC()
 	}
-	analysis, err := compose.AnalyzeFile(options.ComposeFile)
+	analysis, err := analyzer.AnalyzeFile(options.ComposeFile)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func Generate(options Options) (*Result, error) {
 	return &Result{OutputDir: options.OutputDir, Mode: analysis.Mode, Manifest: manifest}, nil
 }
 
-func copyServiceAssets(assetsDir string, service compose.ServiceAnalysis, storageNamespace string) (ManifestService, error) {
+func copyServiceAssets(assetsDir string, service analyzer.ServiceAnalysis, storageNamespace string) (ManifestService, error) {
 	serviceDir := filepath.Join(assetsDir, service.Name)
 	manifestService := ManifestService{
 		Name:             service.Name,
@@ -142,7 +142,7 @@ func copyServiceAssets(assetsDir string, service compose.ServiceAnalysis, storag
 		Warnings:         service.Warnings,
 		HostRequirements: service.HostRequirements,
 	}
-	if service.Adapter == compose.AdapterPostgresPGlite || service.Adapter == compose.AdapterSQLite {
+	if service.Adapter == analyzer.AdapterPostgresPGlite || service.Adapter == analyzer.AdapterSQLite {
 		manifestService.Config["storageNamespace"] = storageNamespace
 	}
 	for _, asset := range service.Assets {
@@ -257,7 +257,7 @@ func demoStorageNamespace(composeFile string) string {
 	return "ps-" + hex.EncodeToString(sum[:])[:16]
 }
 
-func unsupportedError(analysis *compose.Analysis) error {
+func unsupportedError(analysis *analyzer.Analysis) error {
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "project is not browser-native yet; unsupported services:")
 	for _, service := range analysis.Services {
@@ -283,7 +283,7 @@ func copyTreeFiltered(source, destination string, include func(string, os.DirEnt
 	return copyTreeFilteredWithSkip(source, destination, include, skipProjectDir)
 }
 
-func copyDirectoryAsset(asset compose.AssetAnalysis, destination string) ([]string, error) {
+func copyDirectoryAsset(asset analyzer.AssetAnalysis, destination string) ([]string, error) {
 	if asset.Name == "static" {
 		return copyTreeFilteredWithSkipTransform(asset.Source, destination, func(string, os.DirEntry) bool {
 			return true
@@ -466,7 +466,7 @@ func writeRuntime(outputDir string) error {
 	})
 }
 
-func writeHostConfigs(outputDir string, requirements compose.HostRequirements) error {
+func writeHostConfigs(outputDir string, requirements analyzer.HostRequirements) error {
 	if !requirements.CrossOriginIsolationRequired {
 		return nil
 	}

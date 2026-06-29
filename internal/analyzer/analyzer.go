@@ -1,4 +1,4 @@
-package compose
+package analyzer
 
 import (
 	"encoding/json"
@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/ramazankara/pocketstack/internal/compose"
 )
 
 const (
@@ -96,7 +98,7 @@ type adapter interface {
 
 type adapterContext struct {
 	Name        string
-	Service     Service
+	Service     compose.Service
 	ProjectRoot string
 	Labels      map[string]string
 	Explicit    string
@@ -107,7 +109,7 @@ func AnalyzeFile(composeFile string) (*Analysis, error) {
 	if err != nil {
 		return nil, err
 	}
-	project, err := LoadFile(absCompose)
+	project, err := compose.LoadFile(absCompose)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +118,7 @@ func AnalyzeFile(composeFile string) (*Analysis, error) {
 	return &analysis, nil
 }
 
-func Analyze(project *Project, projectRoot, composeFile string) Analysis {
+func Analyze(project *compose.Project, projectRoot, composeFile string) Analysis {
 	names := make([]string, 0, len(project.Services))
 	skippedProfiles := make([]string, 0)
 	for name, service := range project.Services {
@@ -168,7 +170,7 @@ func Analyze(project *Project, projectRoot, composeFile string) Analysis {
 	return analysis
 }
 
-func analyzeService(name string, service Service, projectRoot string) ServiceAnalysis {
+func analyzeService(name string, service compose.Service, projectRoot string) ServiceAnalysis {
 	labels := service.LabelMap()
 	explicit := strings.TrimSpace(labels[LabelAdapter])
 	context := adapterContext{
@@ -796,7 +798,7 @@ func addOptionalSQLPath(result *ServiceAnalysis, projectRoot, rawPath, name, tar
 	result.addAsset(name, "file", path, target)
 }
 
-func addPostgresInitMounts(result *ServiceAnalysis, projectRoot string, service Service) {
+func addPostgresInitMounts(result *ServiceAnalysis, projectRoot string, service compose.Service) {
 	for _, volume := range service.Volumes {
 		if !volume.IsBindLike() {
 			continue
@@ -977,7 +979,7 @@ func skipProjectDir(name string) bool {
 	}
 }
 
-func browserEnvironment(projectRoot string, service Service, result *ServiceAnalysis) ([]string, bool) {
+func browserEnvironment(projectRoot string, service compose.Service, result *ServiceAnalysis) ([]string, bool) {
 	values := map[string]string{}
 	usedEnvFile := false
 	for _, envFile := range service.EnvFiles() {
@@ -1273,7 +1275,7 @@ func quoteCommandPart(part string) string {
 	return strings.ReplaceAll(part, " ", `\ `)
 }
 
-func frontendSource(projectRoot string, service Service, filename string) string {
+func frontendSource(projectRoot string, service compose.Service, filename string) string {
 	if source := bindSourceForWorkingDir(projectRoot, service.Volumes, service.WorkingDir, filename); source != "" {
 		return source
 	}
@@ -1286,7 +1288,7 @@ func frontendSource(projectRoot string, service Service, filename string) string
 	return ""
 }
 
-func bindSourceForWorkingDir(projectRoot string, volumes []VolumeSpec, workingDir, filename string) string {
+func bindSourceForWorkingDir(projectRoot string, volumes []compose.VolumeSpec, workingDir, filename string) string {
 	workingDir = cleanContainerPath(workingDir)
 	if workingDir == "" {
 		return ""
@@ -1307,7 +1309,7 @@ func bindSourceForWorkingDir(projectRoot string, volumes []VolumeSpec, workingDi
 	return ""
 }
 
-func firstBindWithFile(projectRoot string, volumes []VolumeSpec, filename string) string {
+func firstBindWithFile(projectRoot string, volumes []compose.VolumeSpec, filename string) string {
 	for _, volume := range volumes {
 		if !volume.IsBindLike() {
 			continue
@@ -1387,7 +1389,7 @@ func labelInt(labels map[string]string, key string, fallback int) int {
 	return value
 }
 
-func firstPort(service Service, fallback int) int {
+func firstPort(service compose.Service, fallback int) int {
 	if len(service.Ports) > 0 && service.Ports[0].Target != 0 {
 		return service.Ports[0].Target
 	}
@@ -1487,7 +1489,7 @@ func defaultPortForImage(image string) int {
 	}
 }
 
-func hasExtends(service Service) bool {
+func hasExtends(service compose.Service) bool {
 	switch value := service.Extends.(type) {
 	case nil:
 		return false
