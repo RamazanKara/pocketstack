@@ -22,7 +22,7 @@ runtime:
 	npm run build:runtime
 
 studio:
-	python3 -m http.server $(PORT) --directory studio
+	python3 -m http.server $(PORT) --directory web/studio
 
 media:
 	npm run media
@@ -42,6 +42,7 @@ smoke: build
 	npm run test:smoke
 
 pages: smoke
+	npm run docs:build
 	npm run pages:build
 
 release-check: test lint smoke release-dry-run verify-checksums

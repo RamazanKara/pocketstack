@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import puppeteer from "puppeteer-core";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
-const studioDir = join(root, "studio");
+const studioDir = join(root, "web", "studio");
 const mediaDir = join(root, "docs", "media");
 const framesDir = join(mediaDir, "frames-announcement");
 const videoPath = join(mediaDir, "pocketstack-announcement.mp4");
