@@ -30,6 +30,13 @@ if (existsSync(mediaDir)) {
   console.warn("Skipping docs/media (not found); run `npm run media` to record the announcement clip.");
 }
 
+const docsDist = join(root, "docs", ".vitepress", "dist");
+if (existsSync(docsDist)) {
+  await cp(docsDist, join(pagesDir, "docs"), { recursive: true });
+} else {
+  console.warn("Skipping docs site (docs/.vitepress/dist not found); run `npm run docs:build` first.");
+}
+
 await mkdir(join(pagesDir, "demos"), { recursive: true });
 
 const includedDemos = [];

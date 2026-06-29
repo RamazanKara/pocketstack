@@ -13,13 +13,16 @@
     "test:smoke": "node web/runtime/test/generated-demo.test.mjs",
     "media": "node scripts/record-announcement-demo.mjs",
     "pages:build": "node scripts/build-pages-site.mjs",
-    "test:browsers": "node tests/browser/pages-basic.test.mjs"
+    "test:browsers": "node tests/browser/pages-basic.test.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "esbuild": "^0.25.0",
     "js-yaml": "^4.1.1",
     "puppeteer-core": "^25.1.0",
+    "vitepress": "^1.6.4",
     "wabt": "^1.0.39"
   }
 }

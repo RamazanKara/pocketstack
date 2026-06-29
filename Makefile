@@ -42,6 +42,7 @@ smoke: build
 	npm run test:smoke
 
 pages: smoke
+	npm run docs:build
 	npm run pages:build
 
 release-check: test lint smoke release-dry-run verify-checksums
