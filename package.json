@@ -7,10 +7,10 @@
     "node": ">=26"
   },
   "scripts": {
-    "build:runtime": "esbuild runtime/src/app.ts --bundle --format=esm --target=es2022 --outfile=internal/generator/runtime/app.js",
+    "build:runtime": "esbuild web/runtime/src/app.ts --bundle --format=esm --target=es2022 --outfile=internal/generator/runtime/app.js",
     "build:wasi-example": "wat2wasm examples/wasi/hello.wat -o examples/wasi/hello.wasm",
-    "test:runtime": "node --test runtime/test/runtime.test.mjs runtime/test/wasi.test.mjs runtime/test/mock-routes.test.mjs runtime/test/mock-sw.test.mjs runtime/test/sqlite-adapter.test.mjs runtime/test/pglite-adapter.test.mjs runtime/test/frontend-adapter.test.mjs runtime/test/db-assets.test.mjs runtime/test/service-urls.test.mjs",
-    "test:smoke": "node runtime/test/generated-demo.test.mjs",
+    "test:runtime": "node --test web/runtime/test/runtime.test.mjs web/runtime/test/wasi.test.mjs web/runtime/test/mock-routes.test.mjs web/runtime/test/mock-sw.test.mjs web/runtime/test/sqlite-adapter.test.mjs web/runtime/test/pglite-adapter.test.mjs web/runtime/test/frontend-adapter.test.mjs web/runtime/test/db-assets.test.mjs web/runtime/test/service-urls.test.mjs",
+    "test:smoke": "node web/runtime/test/generated-demo.test.mjs",
     "media": "node scripts/record-announcement-demo.mjs",
     "pages:build": "node scripts/build-pages-site.mjs",
     "test:browsers": "node tests/browser/pages-basic.test.mjs"

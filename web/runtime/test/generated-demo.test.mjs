@@ -5,7 +5,7 @@ import test from "node:test";
 async function readManifest(t, name) {
   let raw;
   try {
-    raw = await readFile(new URL(`../../dist/${name}/pocketstack.manifest.json`, import.meta.url), "utf8");
+    raw = await readFile(new URL(`../../../dist/${name}/pocketstack.manifest.json`, import.meta.url), "utf8");
   } catch (error) {
     if (error.code === "ENOENT") {
       t.skip(`run make smoke to generate dist/${name} first`);
@@ -98,15 +98,15 @@ test("generated WASI demo carries args and Compose environment", async (t) => {
   assert.equal(service.config.env, "POCKETSTACK_MODE=demo");
   assert.equal(manifest.hostRequirements.crossOriginIsolationRequired, true);
   assert.equal(service.hostRequirements.crossOriginIsolationRequired, true);
-  const headers = await readFile(new URL("../../dist/wasi/_headers", import.meta.url), "utf8");
+  const headers = await readFile(new URL("../../../dist/wasi/_headers", import.meta.url), "utf8");
   assert.match(headers, /Cross-Origin-Opener-Policy: same-origin/);
   assert.match(headers, /Cross-Origin-Embedder-Policy: require-corp/);
-  const vercel = JSON.parse(await readFile(new URL("../../dist/wasi/vercel.json", import.meta.url), "utf8"));
+  const vercel = JSON.parse(await readFile(new URL("../../../dist/wasi/vercel.json", import.meta.url), "utf8"));
   assert.deepEqual(vercel.headers[0].headers, [
     { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
     { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
   ]);
-  const staticWebApp = JSON.parse(await readFile(new URL("../../dist/wasi/staticwebapp.config.json", import.meta.url), "utf8"));
+  const staticWebApp = JSON.parse(await readFile(new URL("../../../dist/wasi/staticwebapp.config.json", import.meta.url), "utf8"));
   assert.equal(staticWebApp.globalHeaders["Cross-Origin-Opener-Policy"], "same-origin");
   assert.equal(staticWebApp.globalHeaders["Cross-Origin-Embedder-Policy"], "require-corp");
 });
@@ -124,8 +124,8 @@ test("generated full-stack demo wires frontend bridge, mock API, and browser dat
   assert.equal(byName.api.config.fixturesIndex, "health.json");
   assert.equal(byName.db.config.initScripts, "assets/db/init-scripts/01-init.sql");
 
-  const index = await readFile(new URL("../../dist/full-stack/assets/app/project/index.html", import.meta.url), "utf8");
-  const runtime = await readFile(new URL("../../dist/full-stack/app.js", import.meta.url), "utf8");
+  const index = await readFile(new URL("../../../dist/full-stack/assets/app/project/index.html", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../../../dist/full-stack/app.js", import.meta.url), "utf8");
   assert.match(index, /src="\/src\/main\.jsx"/);
   assert.match(runtime, /__POCKETSTACK_BRIDGE_CONFIG__/);
   assert.match(runtime, /__pocketstack_bridge\.js/);
@@ -147,7 +147,7 @@ test("generated upload-ready examples are real browser-native demos", async (t) 
     assert.equal(manifest.services[0].adapter, adapter);
   }
 
-  const staticHTML = await readFile(new URL("../../dist/uploaded-static-blog/assets/web/static/index.html", import.meta.url), "utf8");
+  const staticHTML = await readFile(new URL("../../../dist/uploaded-static-blog/assets/web/static/index.html", import.meta.url), "utf8");
   assert.match(staticHTML, /href="\.\/styles\.css"/);
 
   const mock = await readManifest(t, "uploaded-mock-catalog");

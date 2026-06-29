@@ -1,4 +1,4 @@
-// runtime/src/db-assets.ts
+// web/runtime/src/db-assets.ts
 function configList(value = "") {
   return String(value || "").split("\n").map((item) => item.trim()).filter(Boolean);
 }
@@ -22,7 +22,7 @@ function sqliteSQLAssetPaths(service, isDatabasePath = () => false) {
   ];
 }
 
-// runtime/src/frontend-adapter.ts
+// web/runtime/src/frontend-adapter.ts
 var TEXT_EXTENSIONS = /* @__PURE__ */ new Set([
   ".cjs",
   ".css",
@@ -233,7 +233,7 @@ function splitEnvironmentEntry(entry) {
   return [text.slice(0, index).trim(), text.slice(index + 1)];
 }
 
-// runtime/src/mock-routes.ts
+// web/runtime/src/mock-routes.ts
 var HTTP_METHODS = /* @__PURE__ */ new Set(["get", "put", "post", "delete", "patch", "options", "head"]);
 function statusFromKey(key) {
   const value = Number.parseInt(key, 10);
@@ -450,7 +450,7 @@ function mergeMockRoutes(openAPIRoutes = [], fixtureRoutes = []) {
   return [...byKey.values()];
 }
 
-// runtime/src/pglite-adapter.ts
+// web/runtime/src/pglite-adapter.ts
 var BOOTSTRAP_TABLE = "__pocketstack_bootstrap";
 function pglitePersistMode(service) {
   return service?.config?.persist === "memory" ? "memory" : "indexeddb";
@@ -506,7 +506,7 @@ function storageToken(value) {
   return String(value || "").trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "demo";
 }
 
-// runtime/src/service-urls.ts
+// web/runtime/src/service-urls.ts
 function serviceEnvName(name = "") {
   return String(name || "service").trim().replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase() || "SERVICE";
 }
@@ -573,7 +573,7 @@ function frontendServiceEnvironment(env = {}, services = [], baseHref = globalTh
   return next;
 }
 
-// runtime/src/sqlite-adapter.ts
+// web/runtime/src/sqlite-adapter.ts
 function sqlitePersistMode(service) {
   return service?.config?.persist === "memory" ? "memory" : "indexeddb";
 }
@@ -593,7 +593,7 @@ function storageToken2(value) {
   return String(value || "").trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "demo";
 }
 
-// runtime/src/wasi-preview.ts
+// web/runtime/src/wasi-preview.ts
 var WASI_ERRNO = {
   success: 0,
   badf: 8,
@@ -3528,7 +3528,7 @@ var safeLoad = renamed("safeLoad", "load");
 var safeLoadAll = renamed("safeLoadAll", "loadAll");
 var safeDump = renamed("safeDump", "dump");
 
-// runtime/src/app.ts
+// web/runtime/src/app.ts
 var state = {
   manifest: null,
   selected: null,

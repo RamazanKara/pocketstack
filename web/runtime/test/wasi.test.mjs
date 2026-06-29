@@ -20,7 +20,7 @@ async function loadWASIHelpers() {
 
 test("WASI example writes hello output through fd_write", async () => {
   const { createWASIPreviewImports } = await loadWASIHelpers();
-  const bytes = await readFile(new URL("../../examples/wasi/hello.wasm", import.meta.url));
+  const bytes = await readFile(new URL("../../../examples/wasi/hello.wasm", import.meta.url));
   let instance;
   const output = [];
   const imports = createWASIPreviewImports({

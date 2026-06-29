@@ -22,7 +22,7 @@ runtime:
 	npm run build:runtime
 
 studio:
-	python3 -m http.server $(PORT) --directory studio
+	python3 -m http.server $(PORT) --directory web/studio
 
 media:
 	npm run media
