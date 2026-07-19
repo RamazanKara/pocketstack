@@ -49,7 +49,10 @@ git push origin main "$VERSION"
 ```
 
 The GitHub `release` workflow runs GoReleaser and publishes Linux, macOS, and
-Windows binaries for amd64 and arm64 with checksums.
+Windows binaries for amd64 and arm64 with checksums. After a successful v1.x.x
+release, the same workflow force-updates the moving `v1` tag so
+`ramazankara/pocketstack@v1` resolves to that release. Do not move `v1` by hand
+before the release artifacts succeed.
 
 ## After publish
 
@@ -68,6 +71,16 @@ examples, or generated demo behavior:
 ```sh
 curl -L --fail https://ramazankara.github.io/pocketstack/
 ```
+
+For Action releases, confirm both the immutable and moving references:
+
+```sh
+git ls-remote --tags origin refs/tags/v1 refs/tags/"$VERSION"
+```
+
+They should resolve to the same release commit. Open a same-repository test pull
+request against a disposable Cloudflare Pages project before announcing a
+change to Action deployment behavior.
 
 ::: tip
 Record user-facing changes in `CHANGELOG.md` and add a per-version entry under

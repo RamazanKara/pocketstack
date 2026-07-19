@@ -60,7 +60,19 @@ async function runBrowser(browserConfig) {
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.goto(baseURL, { waitUntil: "networkidle" });
-    await assertText(page, "h1", /Docker Compose projects/);
+    await assertText(page, "h1", /A preview for every Compose PR/);
+    await assertText(page, ".scope-warning", /Unsupported containers block deployment/);
+    assert.equal(await page.locator(".example-card").count(), 3);
+    assert.equal(await page.locator(".browser-shot img").evaluateAll((images) => images.every((image) => image.complete && image.naturalWidth > 0)), true);
+    await page.locator("[data-copy]").click();
+    await page.waitForFunction(() => /Copied|Select and copy/.test(document.querySelector("[data-copy]")?.textContent || ""));
+    await assertText(page, "[data-copy]", /Copied|Select and copy/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true);
+    await page.locator(".menu-toggle").click();
+    assert.equal(await page.locator("#primary-navigation").evaluate((navigation) => navigation.classList.contains("is-open")), true);
+    await page.locator('#primary-navigation a[href="#examples"]').click();
+    assert.equal(await page.locator("#primary-navigation").evaluate((navigation) => navigation.classList.contains("is-open")), false);
     await page.goto(`${baseURL}/studio/`, { waitUntil: "networkidle" });
     await assertText(page, "h1", /PocketStack Studio/);
     if (browserConfig.dynamicStudio) {
@@ -133,6 +145,8 @@ function createStaticServer(directory) {
     ".json": "application/json",
     ".mp4": "video/mp4",
     ".png": "image/png",
+    ".webp": "image/webp",
+    ".woff2": "font/woff2",
   };
   return createServer(async (request, response) => {
     const url = new URL(request.url || "/", baseURL);

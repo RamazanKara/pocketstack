@@ -1,96 +1,146 @@
 # PocketStack
 
-PocketStack turns browser-compatible Docker Compose projects into shareable
-demos that run as static browser apps — no hidden server, no runner, and no
-Docker at demo time.
+Add one GitHub Action and get a static, shareable preview for every
+**browser-compatible Docker Compose pull request**.
 
-> Drop in a `compose.yaml`, get a static, browser-native demo when every service
-> maps to a browser primitive. When one can't, PocketStack tells you why and how
-> to reshape it — it never fakes a runner.
+<p align="center">
+  <a href="https://ramazankara.github.io/pocketstack/">
+    <img src="docs/assets/readme-demo/pocketstack-demo.gif" width="960" alt="Animated PocketStack demo: a Docker Compose pull request is checked service by service, receives a static preview at 100% browser readiness, rotates through a storefront, sprint board, and analytics dashboard, then shows Redis blocking deployment at 75% readiness with no app preview published.">
+  </a>
+</p>
 
-**[Try it now](https://ramazankara.github.io/pocketstack/)** ·
-**[Documentation](https://ramazankara.github.io/pocketstack/docs/)** ·
-**[Studio](https://ramazankara.github.io/pocketstack/studio/)**
+<p align="center"><strong>Open a PR → check every service → share the static preview.</strong><br><sub>Unsupported containers stay explicit and never masquerade as a working preview.</sub></p>
 
-[![PocketStack announcement video](docs/media/pocketstack-announcement-poster.png)](docs/media/pocketstack-announcement.mp4)
+PocketStack checks every active Compose service, maps compatible services to
+browser adapters, generates static output, deploys it to a stable Cloudflare
+Pages URL, and updates one pull-request comment on every push.
 
-## What you can demo
+> [!IMPORTANT]
+> PocketStack does not run arbitrary containers. If any active service needs
+> Docker, Linux networking, a privileged process, or another unsupported
+> runtime, the Action blocks the app deployment and publishes a compatibility
+> report that says exactly why.
 
-Six browser adapters map Compose services to real browser primitives:
-`static-web`, `frontend` (WebContainer), `mock-http` (OpenAPI), `sqlite`,
-`postgres-pglite`, and `wasi`. See the [compatibility matrix](docs/adapters/index.md).
+**[See the workflow](https://ramazankara.github.io/pocketstack/)** ·
+**[Set up PR previews](docs/guide/pr-previews.md)** ·
+**[Compatibility matrix](docs/adapters/index.md)**
 
-PocketStack is not a Docker replacement. Privileged containers, arbitrary
-daemons, opaque volumes, and real Linux networking stay unsupported unless a
-browser adapter exists — in which case `analyze` reports the gap and how to
-[convert it](docs/convert/index.md).
+## Add the Action
 
-## Install
+Create `.github/workflows/pocketstack.yml`:
 
-Download the latest binary from
-[GitHub Releases](https://github.com/ramazankara/pocketstack/releases/latest),
-or build from source:
+```yaml
+name: PocketStack Preview
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
 
-```sh
-git clone https://github.com/ramazankara/pocketstack.git
-cd pocketstack
-nvm use
-npm ci
-npm run build:wasi-example
-npm run build:runtime
-go build -o bin/pocketstack ./cmd/pocketstack
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ramazankara/pocketstack@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          compose-file: compose.yaml
+          cloudflare-project: my-app-previews
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 ```
 
-Full instructions and prerequisites: [installation](docs/guide/installation.md).
+The Action checks out the PR and builds its trusted PocketStack CLI itself; the
+workflow does not need a separate checkout or install step. Create the
+Cloudflare Pages Direct Upload project and add the two repository secrets once.
+The [PR preview guide](docs/guide/pr-previews.md) covers the exact setup,
+permissions, lifecycle, and security model.
 
-## Quick start
+## What a pull request receives
+
+| Result | Check | Stable PR URL |
+| --- | --- | --- |
+| Every service has a browser adapter | Passes | Working static app preview |
+| Some services are compatible | Fails | Static compatibility report; no app preview |
+| No services are compatible or analysis fails | Fails | Static blocker/error report; no app preview |
+| PR comes from a fork or Dependabot | Reflects compatibility | No deployment or comment; secrets stay unavailable |
+| PR closes | Passes after cleanup | Static closed-preview tombstone |
+
+The job summary is always written. For same-repository PRs, one sticky comment
+is created and updated instead of adding a new comment on every commit.
+
+## Three working examples
+
+These recognizable apps exercise the same adapters and generation path as PR
+previews:
+
+| Application | Compose services | Browser adapters |
+| --- | --- | --- |
+| [Pocket Supply storefront](examples/showcase/storefront/) | Vite storefront + fixture API | `frontend`, `mock-http` |
+| [Northstar sprint board](examples/showcase/sprint-board/) | React board + Postgres seed | `frontend`, `postgres-pglite` |
+| [Clearview analytics](examples/showcase/analytics/) | nginx static site | `static-web` |
+
+The storefront includes search, cart, quantities, and checkout; the sprint
+board supports issue creation, filtering, drag-and-drop, and keyboard moves;
+the analytics dashboard includes date ranges, SVG chart tooltips, and a
+sortable table.
+
+## Compatibility is the product boundary
+
+PocketStack has six browser adapters:
+
+- `static-web` — static nginx, Apache, or Caddy document roots;
+- `frontend` — Node/Bun source running in WebContainer;
+- `mock-http` — OpenAPI routes and JSON fixtures;
+- `postgres-pglite` — Postgres-shaped demos using PGlite;
+- `sqlite` — seeded SQLite databases;
+- `wasi` — prebuilt WebAssembly System Interface modules.
+
+A project generates only when every active service maps to one of these
+adapters. Arbitrary images, Dockerfile builds, Redis, opaque volumes, privileged
+containers, and real container networking do not silently fall back to a
+hosted runner. See [adapters](docs/adapters/index.md) and the
+[conversion guide](docs/convert/index.md).
+
+## Use the CLI locally
+
+The GitHub Action is the shortest path to PR previews. The CLI exposes the same
+analyzer and generator for local use:
 
 ```sh
-# See which services map to a browser adapter
+# Explain every service mapping and blocker.
 pocketstack analyze -f compose.yaml
 
-# Generate a static, browser-only demo
+# Generate only when the whole active stack is browser-compatible.
 pocketstack demo -f compose.yaml -o pocketstack-demo
 ```
 
-Serve `pocketstack-demo/` from any static host. Some demos need COOP/COEP
-headers; PocketStack emits the host config when they do. Walk through it in
-[getting started](docs/guide/getting-started.md), then see [hosting](docs/deploy/hosting.md).
+Download a binary from
+[GitHub Releases](https://github.com/ramazankara/pocketstack/releases/latest)
+or follow [installation](docs/guide/installation.md). Generated demos are plain
+static files. Some adapters require COOP/COEP headers; PocketStack emits the
+host configuration when needed.
 
-## Studio
+## Security model
 
-[PocketStack Studio](https://ramazankara.github.io/pocketstack/studio/) is a
-static browser page for quick compatibility checks — paste or upload Compose
-YAML and read the readiness report, entirely in the tab. Run it locally with
-`make studio`.
+The preview workflow uses `pull_request`, never `pull_request_target`. It does
+not start Docker or execute package scripts from the PR in the GitHub runner.
+The analyzer confines Compose files, mounts, environment files, and labeled
+assets to the checked-out repository and rejects symlink escapes. Fork and
+Dependabot PRs do not receive Cloudflare credentials or a writable comment
+token.
 
-## Documentation
+For details, read [PR preview security](docs/guide/pr-previews.md#security-model)
+and [SECURITY.md](SECURITY.md).
 
-Full docs are published at **<https://ramazankara.github.io/pocketstack/docs/>**
-(source under [`docs/`](docs/)):
+## Documentation and development
 
-- [Getting started](docs/guide/getting-started.md) · [CLI reference](docs/guide/cli.md) · [Concepts & glossary](docs/guide/concepts.md) · [Troubleshooting](docs/guide/troubleshooting.md)
-- [Adapters & compatibility](docs/adapters/index.md) · [Labels](docs/adapters/labels.md) · [Conversion guide](docs/convert/index.md)
-- [Hosting](docs/deploy/hosting.md) · [Website integration](docs/deploy/website-integration.md) · [Manifest reference](docs/deploy/manifest.md)
-- [Architecture](docs/reference/architecture.md) · [Service URLs](docs/reference/service-urls.md) · [Contributing](docs/contribute/index.md)
+- [Getting started](docs/guide/getting-started.md)
+- [CLI reference](docs/guide/cli.md)
+- [Hosting and headers](docs/deploy/hosting.md)
+- [Architecture](docs/reference/architecture.md)
+- [Contributing](CONTRIBUTING.md)
 
-## Product boundary
-
-PocketStack stays browser-native. It will not add a hidden Docker runner to make
-unsupported services appear compatible. When a stack can become browser-native,
-PocketStack packages it; when it cannot, it explains the gap. See the
-[browser-only contract](docs/guide/concepts.md).
-
-## Commands
-
-```text
-pocketstack analyze [-f compose.yaml] [--json]
-pocketstack demo [-f compose.yaml] [-o pocketstack-demo]
-pocketstack version
-```
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[development guide](docs/contribute/index.md). Report security issues per
-[SECURITY.md](SECURITY.md). Licensed under [MIT](LICENSE).
+Licensed under [MIT](LICENSE).

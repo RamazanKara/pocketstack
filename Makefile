@@ -5,6 +5,7 @@ PORT ?= 4173
 test:
 	go test ./...
 	npm run test:runtime
+	npm run test:action
 
 build:
 	npm run build:wasi-example
@@ -28,7 +29,7 @@ media:
 	npm run media
 
 smoke: build
-	rm -rf dist/static-site dist/frontend dist/full-stack dist/wasi dist/mock-api dist/postgres-pglite dist/sqlite dist/uploaded-static-blog dist/uploaded-mock-catalog dist/uploaded-sqlite-notes
+	rm -rf dist/static-site dist/frontend dist/full-stack dist/wasi dist/mock-api dist/postgres-pglite dist/sqlite dist/uploaded-static-blog dist/uploaded-mock-catalog dist/uploaded-sqlite-notes dist/showcase-storefront dist/showcase-sprint-board dist/showcase-analytics
 	bin/pocketstack demo -f examples/static-site/compose.yaml -o dist/static-site
 	bin/pocketstack demo -f examples/frontend/compose.yaml -o dist/frontend
 	bin/pocketstack demo -f examples/full-stack/compose.yaml -o dist/full-stack
@@ -39,6 +40,9 @@ smoke: build
 	bin/pocketstack demo -f examples/uploaded/static-blog/compose.yaml -o dist/uploaded-static-blog
 	bin/pocketstack demo -f examples/uploaded/mock-catalog/compose.yaml -o dist/uploaded-mock-catalog
 	bin/pocketstack demo -f examples/uploaded/sqlite-notes/compose.yaml -o dist/uploaded-sqlite-notes
+	bin/pocketstack demo -f examples/showcase/storefront/compose.yaml -o dist/showcase-storefront
+	bin/pocketstack demo -f examples/showcase/sprint-board/compose.yaml -o dist/showcase-sprint-board
+	bin/pocketstack demo -f examples/showcase/analytics/compose.yaml -o dist/showcase-analytics
 	npm run test:smoke
 
 pages: smoke

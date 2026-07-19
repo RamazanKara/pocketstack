@@ -43,6 +43,7 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	composeFile := fs.String("f", "", "compose file")
 	jsonOutput := fs.Bool("json", false, "print JSON")
+	safeRoot := fs.String("safe-root", "", "restrict local project files to this directory")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -51,7 +52,7 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	analysis, err := analyzer.AnalyzeFile(resolvedCompose)
+	analysis, err := analyzer.AnalyzeFileWithin(resolvedCompose, *safeRoot)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -101,6 +102,7 @@ func demo(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	composeFile := fs.String("f", "", "compose file")
 	outputDir := fs.String("o", "pocketstack-demo", "output directory")
+	safeRoot := fs.String("safe-root", "", "restrict local project files to this directory")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -112,6 +114,7 @@ func demo(args []string, stdout, stderr io.Writer) int {
 	result, err := generator.Generate(generator.Options{
 		ComposeFile: resolvedCompose,
 		OutputDir:   *outputDir,
+		AllowedRoot: *safeRoot,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)

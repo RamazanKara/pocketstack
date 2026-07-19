@@ -91,6 +91,32 @@ func TestRunAnalyzeMissingFileFails(t *testing.T) {
 	}
 }
 
+func TestRunAnalyzeSafeRootRejectsExternalProjectFiles(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	outsideEnv := filepath.Join(outside, "secrets.env")
+	if err := os.WriteFile(outsideEnv, []byte("TOKEN=do-not-package\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"dev":"vite"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeFile := filepath.Join(root, "compose.yaml")
+	compose := "services:\n  app:\n    image: node:22-alpine\n    command: npm run dev\n    env_file: " + outsideEnv + "\n    volumes:\n      - .:/workspace\n"
+	if err := os.WriteFile(composeFile, []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"analyze", "-f", composeFile, "--safe-root", root}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "outside the allowed project root") {
+		t.Fatalf("stderr = %q, want safe-root rejection", stderr.String())
+	}
+}
+
 func TestRunDemoGeneratesOutput(t *testing.T) {
 	composeFile := writeStaticProject(t)
 	outDir := filepath.Join(t.TempDir(), "demo")

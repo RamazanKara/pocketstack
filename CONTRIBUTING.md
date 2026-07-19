@@ -18,13 +18,18 @@ npm ci
 npm run build:wasi-example
 npm run build:runtime
 npm run test:runtime
+npm run test:action
+npm run showcases:install
+npm run showcases:build
+npm run test:showcases
 go test ./...
 go vet ./...
 make smoke
 ```
 
 `make smoke` builds the binary, regenerates every example demo, and runs the
-generated-demo checks. `make release-check` additionally runs `go vet`, a
+generated-demo checks, including all three showcase projects. `make
+release-check` additionally runs `go vet`, a
 GoReleaser snapshot build, and checksum verification — run it before preparing a
 release.
 
