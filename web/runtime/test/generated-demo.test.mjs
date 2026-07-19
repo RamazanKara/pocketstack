@@ -158,3 +158,32 @@ test("generated upload-ready examples are real browser-native demos", async (t) 
   assert.equal(sqlite.services[0].config.initPath, "assets/db/init.sql");
   assert.equal(sqlite.services[0].config.seedPath, "assets/db/seed.sql");
 });
+
+test("generated showcase applications are ready and use the advertised adapters", async (t) => {
+  const storefront = await readManifest(t, "showcase-storefront");
+  const sprintBoard = await readManifest(t, "showcase-sprint-board");
+  const analytics = await readManifest(t, "showcase-analytics");
+  if (!storefront || !sprintBoard || !analytics) return;
+
+  for (const manifest of [storefront, sprintBoard, analytics]) {
+    assert.equal(manifest.browserOnly, true);
+    assert.equal(manifest.readiness.status, "ready");
+    assert.equal(manifest.readiness.score, 100);
+  }
+
+  const storefrontServices = Object.fromEntries(storefront.services.map((service) => [service.name, service]));
+  assert.equal(storefrontServices.web.adapter, "frontend");
+  assert.equal(storefrontServices.web.config.env, "VITE_API_URL=http://api:8080");
+  assert.equal(storefrontServices.api.adapter, "mock-http");
+  assert.equal(storefrontServices.api.config.fixturesIndex, "products.json");
+
+  const sprintServices = Object.fromEntries(sprintBoard.services.map((service) => [service.name, service]));
+  assert.equal(sprintServices.app.adapter, "frontend");
+  assert.equal(sprintServices.db.adapter, "postgres-pglite");
+  assert.equal(sprintServices.db.config.persist, "indexeddb");
+  assert.equal(sprintServices.db.config.initScripts, "assets/db/init-scripts/01-init.sql");
+
+  assert.equal(analytics.services.length, 1);
+  assert.equal(analytics.services[0].adapter, "static-web");
+  assert.deepEqual(analytics.services[0].assets[0].files, ["app.js", "index.html", "styles.css"]);
+});

@@ -9,6 +9,12 @@ A project generates only when **every** service maps to an adapter. If even one
 service needs Docker/container semantics PocketStack cannot represent honestly,
 generation stops and you get a [readiness report](#readiness-report) instead.
 
+::: warning Pull-request behavior
+The GitHub Action publishes an application preview only for `ready` projects.
+`partial` and `blocked` projects publish a static compatibility report, fail the
+check, and never fall back to an arbitrary container runner.
+:::
+
 ## Adapter matrix
 
 There are six adapters. Five are selected with the `pocketstack.adapter` label;

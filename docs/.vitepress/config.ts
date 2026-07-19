@@ -5,7 +5,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'PocketStack',
   description:
-    'Turn browser-compatible Docker Compose projects into static, browser-native demos.',
+    'Add one GitHub Action for static previews of browser-compatible Docker Compose pull requests.',
   base: '/pocketstack/docs/',
   lang: 'en-US',
   cleanUrls: true,
@@ -14,8 +14,9 @@ export default defineConfig({
   ignoreDeadLinks: false,
   themeConfig: {
     nav: [
+      { text: 'PR previews', link: '/guide/pr-previews' },
+      { text: 'Compatibility', link: '/adapters/' },
       { text: 'Guide', link: '/guide/getting-started' },
-      { text: 'Adapters', link: '/adapters/' },
       { text: 'Convert', link: '/convert/' },
       { text: 'Deploy', link: '/deploy/hosting' },
       { text: 'Reference', link: '/reference/architecture' },
@@ -33,6 +34,7 @@ export default defineConfig({
           text: 'Guide',
           items: [
             { text: 'Getting started', link: '/guide/getting-started' },
+            { text: 'Pull request previews', link: '/guide/pr-previews' },
             { text: 'Installation', link: '/guide/installation' },
             { text: 'CLI reference', link: '/guide/cli' },
             { text: 'Concepts & glossary', link: '/guide/concepts' },
@@ -100,7 +102,7 @@ export default defineConfig({
       text: 'Edit this page on GitHub',
     },
     footer: {
-      message: 'Browser-native demos. No hidden server, no runner, no Docker at demo time.',
+      message: 'Compose PR in. Static preview out—only when every service is browser-compatible.',
       copyright: 'MIT © Ramazan Kara',
     },
   },

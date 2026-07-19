@@ -1,30 +1,31 @@
 # Getting Started
 
-PocketStack is a Go CLI and browser runtime that turns browser-compatible Docker Compose projects into static, browser-native demos that run entirely in a browser tab. When a service can't be represented honestly in the browser, it reports a readiness score and conversion suggestions instead of faking it.
+PocketStack turns a browser-compatible Docker Compose pull request into a
+static, shareable preview. The primary workflow is one GitHub Action; the local
+CLI uses the same compatibility analyzer and generator.
 
-## Install
-
-Download the prebuilt binary from GitHub Releases, or build from source. See [installation](/guide/installation) for both paths and prerequisites. Verify your install with:
-
-```sh
-pocketstack version
-```
-
-::: tip No-install option
-You can skip the CLI entirely for a quick compatibility check. [Studio](https://ramazankara.github.io/pocketstack/studio/) is a static browser page where you paste or upload Compose YAML (and optionally add the project folder so it can inspect mounted assets). It runs entirely in the tab — no backend, no Docker.
+::: warning Browser-compatible only
+PocketStack is not a remote Docker runner. An application preview is published
+only when every active service maps to a browser adapter. Partial and blocked
+stacks fail the check and publish a static compatibility report instead.
 :::
 
-## The core loop
+## Recommended: preview every pull request
 
-Working with PocketStack is three steps:
+1. Create a Cloudflare Pages Direct Upload project.
+2. Add `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as repository secrets.
+3. Add the PocketStack workflow under `.github/workflows/`.
+4. Open or update a pull request that changes your browser-compatible Compose project.
 
-1. **Analyze** — run `pocketstack analyze` on your Compose file to get a browser-readiness report: which services map to a browser adapter, which don't, and what to do about the gaps.
-2. **Generate** — run `pocketstack demo` to write a static demo folder when the stack is browser-native.
-3. **Serve** — host the output directory on any static host. See [hosting](/deploy/hosting).
+PocketStack analyzes the project, generates static output, deploys the stable
+`pr-<number>` alias, and creates or updates one pull-request comment.
 
-## Worked example: a static site
+[Follow the complete PR preview setup →](/guide/pr-previews)
 
-Start with a minimal nginx static site. Create `compose.yaml`:
+## What compatibility means
+
+Each active service must map to one of six browser adapters: `static-web`,
+`frontend`, `mock-http`, `postgres-pglite`, `sqlite`, or `wasi`. For example:
 
 ```yaml
 services:
@@ -32,51 +33,45 @@ services:
     image: nginx:alpine
     volumes:
       - ./site:/usr/share/nginx/html:ro
-    ports:
-      - "8080:80"
 ```
 
-Put an `index.html` (and any assets) in a `./site` directory next to the Compose file.
+The nginx document-root mount maps to `static-web`, so the generated preview is
+the static site itself. By contrast, a Redis daemon has no browser adapter and
+blocks application deployment. The [compatibility matrix](/adapters/) explains
+every adapter and the [conversion guide](/convert/) suggests browser-native
+substitutions.
 
-### 1. Analyze
+## Inspect the same result locally
+
+Install the CLI, then analyze the Compose file:
 
 ```sh
 pocketstack analyze -f compose.yaml
 ```
 
-```text
-Mode: browser-native
-Browser readiness: 100% (all services browser-native)
-  web: static-web adapter from ./site
-```
-
-The `static-web` adapter is autodetected here from the `nginx` image plus the document-root mount — you don't add a label for it. (The other five adapters are opt-in via `pocketstack.adapter`; see [adapters](/adapters/).)
-
-### 2. Generate the demo
+Ready projects report a 100% browser-readiness score. Generate the static output
+with:
 
 ```sh
 pocketstack demo -f compose.yaml -o pocketstack-demo
 ```
 
-```text
-Generated browser-native demo at /path/to/pocketstack-demo
-```
-
-### 3. Open or serve it
-
-The output is plain static files. Open `pocketstack-demo/index.html` directly to preview, or serve the folder:
+Serve the output from any static host:
 
 ```sh
 npx serve pocketstack-demo
 ```
 
-::: tip
-A static-web demo previews fine from `file://`, but some adapters use a service worker and need `http(s)`. Serving the folder always works. See [troubleshooting](/guide/troubleshooting) if a demo looks empty when opened directly.
-:::
+Some adapters use service workers, WebContainer, or PGlite and require HTTPS
+plus COOP/COEP headers. PocketStack emits host configuration for them; see
+[hosting](/deploy/hosting).
 
-## Where to next
+## Try a known-compatible project
 
-- [adapters](/adapters/) — what each adapter can demo, and how assets are mapped.
-- [convert a service](/convert/) — what to do when `analyze` reports a service as unsupported.
-- [CLI reference](/guide/cli) — every command, flag, and the `--json` output shape.
-- [hosting](/deploy/hosting) — static hosts, and when a demo needs cross-origin isolation headers.
+- [Pocket Supply storefront](https://github.com/ramazankara/pocketstack/tree/main/examples/showcase/storefront) — `frontend` + `mock-http`
+- [Northstar sprint board](https://github.com/ramazankara/pocketstack/tree/main/examples/showcase/sprint-board) — `frontend` + `postgres-pglite`
+- [Clearview analytics](https://github.com/ramazankara/pocketstack/tree/main/examples/showcase/analytics) — `static-web`
+
+For a quick no-install check, [PocketStack Studio](https://ramazankara.github.io/pocketstack/studio/)
+runs the analyzer in the browser. Studio is useful for exploration; the GitHub
+Action is the repeatable PR workflow.

@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,63 @@ services:
 	}
 	if len(analysis.NextSteps) == 0 || !strings.Contains(analysis.NextSteps[0], "cache:") {
 		t.Fatalf("next steps = %#v", analysis.NextSteps)
+	}
+}
+
+func TestAnalyzeFileWithinRejectsPathsOutsideAllowedRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	outsideEnv := filepath.Join(outside, "secrets.env")
+	if err := os.WriteFile(outsideEnv, []byte("TOKEN=do-not-read\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"dev":"vite"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeFile := filepath.Join(root, "compose.yaml")
+	composeYAML := fmt.Sprintf(`
+services:
+  app:
+    image: node:22-alpine
+    command: npm run dev
+    env_file: %s
+    volumes:
+      - .:/workspace
+`, outsideEnv)
+	if err := os.WriteFile(composeFile, []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := AnalyzeFileWithin(composeFile, root)
+	if err == nil || !strings.Contains(err.Error(), "outside the allowed project root") {
+		t.Fatalf("error = %v, want safe-root rejection", err)
+	}
+}
+
+func TestAnalyzeFileWithinRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "openapi.yaml"), []byte("openapi: 3.0.0\npaths: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "openapi.yaml"), filepath.Join(root, "openapi.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	composeFile := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte(`
+services:
+  api:
+    image: scratch
+    labels:
+      pocketstack.adapter: mock-http
+      pocketstack.mock.openapi: openapi.yaml
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := AnalyzeFileWithin(composeFile, root)
+	if err == nil || !strings.Contains(err.Error(), "resolves outside") {
+		t.Fatalf("error = %v, want symlink rejection", err)
 	}
 }
 

@@ -1,0 +1,37 @@
+{
+  "asset": "docs/assets/readme-demo/pocketstack-demo.gif",
+  "poster": "docs/assets/readme-demo/pocketstack-demo-poster.webp",
+  "generator": "scripts/build-readme-demo.mjs",
+  "source": "scripts/readme-demo/index.html",
+  "dimensions": {
+    "width": 960,
+    "height": 540
+  },
+  "framesPerSecond": 8,
+  "frameCount": 88,
+  "durationSeconds": 11,
+  "sourceAssets": [
+    "web/site/assets/storefront-preview.webp",
+    "web/site/assets/sprint-board-preview.webp",
+    "web/site/assets/analytics-preview.webp",
+    "web/site/fonts/inter.woff2"
+  ],
+  "exactClaims": [
+    "Browser-compatible only",
+    "Browser readiness 100%",
+    "Preview ready",
+    "Deployment blocked",
+    "Browser readiness 75%",
+    "No app preview was published"
+  ],
+  "files": {
+    "animation": {
+      "bytes": 927700,
+      "sha256": "d20be252193df9530ca60cb3346b67cd57976f717de461452f27fa9505097994"
+    },
+    "poster": {
+      "bytes": 43810,
+      "sha256": "de2ceb37c3b7f57a0d6242f3b3ca5a9bec7f4dc13a439208d46f6c828c8e4549"
+    }
+  }
+}

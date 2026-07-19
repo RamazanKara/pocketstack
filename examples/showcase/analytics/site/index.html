@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071d40" />
+    <title>Analytics · PocketStack example</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#overview" aria-label="Analytics overview">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h3v4H3zM8 12h3v9H8zM13 14h3v7h-3zM18 5h3v16h-3zM4 10l5-4 5 2 6-6" /></svg>
+          Analytics
+        </a>
+        <nav aria-label="Analytics navigation">
+          <a class="active" href="#overview"><span>⌂</span>Overview</a>
+          <a href="#traffic"><span>▥</span>Traffic</a>
+          <a href="#sources"><span>◔</span>Sources</a>
+          <a href="#content"><span>▤</span>Content</a>
+          <a href="#conversions"><span>◎</span>Conversions</a>
+          <a href="#settings"><span>⚙</span>Settings</a>
+        </nav>
+        <a class="signout" href="#sign-out"><span>↪</span>Sign out</a>
+      </aside>
+
+      <main id="overview">
+        <header class="page-header">
+          <h1>Overview</h1>
+          <label class="date-range">
+            <span class="sr-only">Analytics date range</span>
+            <select id="range-select">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </label>
+        </header>
+
+        <section class="metrics" aria-label="Key metrics">
+          <article><span>Visitors</span><strong id="visitors">12,489</strong><small>↑ 18.6%</small></article>
+          <article><span>Sessions</span><strong id="sessions">18,932</strong><small>↑ 14.2%</small></article>
+          <article><span>Bounce rate</span><strong id="bounce">42.3%</strong><small>↓ 3.1%</small></article>
+          <article><span>Conversions</span><strong id="conversions">1,249</strong><small>↑ 22.7%</small></article>
+        </section>
+
+        <section class="charts" id="traffic">
+          <article class="chart-card">
+            <h2>Sessions over time</h2>
+            <div id="line-chart" class="chart" role="img" aria-label="Sessions over time line chart"></div>
+            <div class="legend"><span class="line-key"></span>Sessions</div>
+          </article>
+          <article class="chart-card" id="sources">
+            <h2>New vs returning visitors</h2>
+            <div id="bar-chart" class="chart" role="img" aria-label="New versus returning visitors bar chart"></div>
+            <div class="legend"><span class="new-key"></span>New visitors <span class="return-key"></span>Returning visitors</div>
+          </article>
+        </section>
+
+        <section class="table-card" id="content">
+          <h2>Top pages</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th><button type="button" data-sort="page">Page <span>↕</span></button></th>
+                <th><button type="button" data-sort="views" aria-sort="descending">Views <span>↓</span></button></th>
+                <th><button type="button" data-sort="unique">Unique visitors <span>↕</span></button></th>
+                <th><button type="button" data-sort="bounce">Bounce rate <span>↕</span></button></th>
+              </tr></thead>
+              <tbody id="pages-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <p class="keyboard-tip">Tip: Use Tab to navigate, Enter or Space to activate, and arrow keys to sort table columns.</p>
+      </main>
+    </div>
+    <div class="tooltip" id="chart-tooltip" role="status" aria-live="polite"></div>
+  </body>
+</html>

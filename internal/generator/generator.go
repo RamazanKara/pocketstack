@@ -26,6 +26,7 @@ type Options struct {
 	ComposeFile string
 	OutputDir   string
 	GeneratedAt time.Time
+	AllowedRoot string
 }
 
 type Result struct {
@@ -73,7 +74,7 @@ func Generate(options Options) (*Result, error) {
 	if options.GeneratedAt.IsZero() {
 		options.GeneratedAt = time.Now().UTC()
 	}
-	analysis, err := analyzer.AnalyzeFile(options.ComposeFile)
+	analysis, err := analyzer.AnalyzeFileWithin(options.ComposeFile, options.AllowedRoot)
 	if err != nil {
 		return nil, err
 	}

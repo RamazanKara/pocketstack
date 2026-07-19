@@ -1,9 +1,10 @@
 # Architecture
 
-PocketStack is a browser-only Compose demo compiler: a Go CLI converts a
-browser-compatible Docker Compose project into a static folder that runs
-entirely in a browser tab, plus a TypeScript browser runtime that is bundled and
-embedded into the CLI. There is no server, runner, or Docker daemon at demo time.
+PocketStack is a browser-only Compose preview compiler. Its GitHub Action drives
+a Go analyzer and generator, deploys the static result, and reports the outcome
+on a pull request. The generated application uses a TypeScript browser runtime
+bundled into the CLI. There is no server, runner, or Docker daemon behind a
+preview URL.
 
 Read this page to understand where a behavior belongs, how the embedded runtime
 is built, or how to add a new adapter without weakening the browser-only
@@ -12,7 +13,10 @@ contract.
 ## Pipeline
 
 ```text
-compose.yaml + project files
+pull_request + compose.yaml + project files
+        |
+        v
+ composite Action    (checkout, trusted CLI build, lifecycle/reporting)
         |
         v
  internal/compose   (model: types + LoadFile)
@@ -26,12 +30,31 @@ compose.yaml + project files
         v
  index.html + app.js + mock-sw.js + pocketstack.manifest.json + assets/
         |
+        +---------------------> Cloudflare Pages + PR summary/comment
+        |
         v
- browser runtime dashboard (in the viewer's tab)
+ browser runtime dashboard (in the preview viewer's tab)
 ```
 
-The CLI entry point is `cmd/pocketstack`. The pipeline is:
-**compose (model) → analyzer → generator → embedded browser runtime.**
+The Action metadata lives at `action.yml`; its lifecycle driver is
+`scripts/action/pocketstack-preview.mjs`; and the CLI entry point is
+`cmd/pocketstack`. The compilation pipeline is: **compose (model) → analyzer →
+generator → embedded browser runtime.**
+
+## Pull-request orchestration
+
+The composite Action is intentionally self-contained. It checks out the PR,
+builds the PocketStack CLI from the selected Action revision, and invokes the
+analyzer with `--safe-root` set to the repository workspace. Ready projects are
+generated and deployed to a stable `pr-<number>` Cloudflare Pages branch.
+Partial, blocked, and malformed projects deploy only a static report and fail
+the check. A closed PR replaces the stable alias with a tombstone.
+
+The orchestration layer owns GitHub summaries, sticky comments, Action outputs,
+fork/Dependabot restrictions, and Cloudflare deployment. It never starts Docker
+or runs project scripts in CI. Paths supplied by the PR—Compose, bind mounts,
+environment files, and adapter assets—must stay inside the checkout and may not
+escape through symlinks.
 
 ## Packages
 
@@ -145,6 +168,10 @@ Two web apps are built from the same repo but are not embedded in the CLI:
 - **`web/studio`** — the in-browser Studio analyzer (paste/upload a Compose file
   for browser-only triage).
 - **`web/site`** — the landing page.
+
+Three production-quality applications under `examples/showcase/` exercise the
+same generator and browser adapters used by the Action. The maintainer showcase
+workflow deploys them to stable Cloudflare Pages branches.
 
 These ship to the public GitHub Pages site alongside selected generated demos.
 

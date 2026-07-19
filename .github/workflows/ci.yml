@@ -12,11 +12,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "1.22"
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "26"
           cache: npm
@@ -24,6 +24,9 @@ jobs:
       - run: npm run build:wasi-example
       - run: npm run build:runtime
       - run: npm run test:runtime
+      - run: npm run test:action
+      - run: npm run showcases:install
+      - run: npm run showcases:build
       - run: go test ./...
       - run: go vet ./...
       - run: go build -o bin/pocketstack ./cmd/pocketstack
@@ -32,3 +35,4 @@ jobs:
       - run: npm run test:browsers
         env:
           POCKETSTACK_REQUIRE_BROWSERS: "1"
+      - run: npm run test:showcases

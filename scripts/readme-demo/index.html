@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PocketStack README demo</title>
+    <style>
+      @font-face {
+        font-family: Inter;
+        src: url("/web/site/fonts/inter.woff2") format("woff2");
+        font-display: block;
+      }
+
+      :root {
+        color-scheme: light;
+        --ink: #0a0c0f;
+        --muted: #4d5662;
+        --quiet: #77808b;
+        --line: #cbd2da;
+        --line-soft: #e4e8ec;
+        --paper: #f7f8f7;
+        --green: #007d43;
+        --green-dark: #006336;
+        --green-soft: #edf8f2;
+        --amber: #a95e00;
+        --amber-soft: #fff7e8;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", ui-monospace, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 960px;
+        height: 540px;
+        margin: 0;
+        overflow: hidden;
+        background: #fff;
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+
+      button,
+      input,
+      select,
+      textarea { font: inherit; }
+
+      #demo {
+        position: relative;
+        width: 960px;
+        height: 540px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background:
+          linear-gradient(90deg, transparent 0 25px, rgba(203, 210, 218, .34) 25px 26px, transparent 26px),
+          #fff;
+      }
+
+      .topbar {
+        height: 59px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 0 27px;
+        border-bottom: 1px solid var(--line-soft);
+        background: rgba(255, 255, 255, .97);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: -.035em;
+      }
+
+      .brand-mark {
+        width: 23px;
+        height: 23px;
+        display: grid;
+        grid-template-columns: repeat(2, 8px);
+        grid-template-rows: repeat(2, 8px);
+        gap: 2px;
+        transform: rotate(45deg);
+      }
+
+      .brand-mark i { border: 2px solid var(--ink); background: white; }
+      .brand-mark i:first-child { grid-row: 1 / 3; border-color: var(--green); background: var(--green); }
+
+      .promise {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .promise b { color: var(--ink); }
+      .promise .arrow { color: var(--green); font-family: var(--mono); }
+
+      .scope {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 29px;
+        padding: 0 10px;
+        border: 1px solid #d58a27;
+        background: var(--amber-soft);
+        color: var(--amber);
+        font-size: 10px;
+        font-weight: 760;
+        letter-spacing: .01em;
+      }
+
+      .scope svg { width: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+      .stage {
+        height: 481px;
+        display: grid;
+        grid-template-columns: 355px 1fr;
+        gap: 18px;
+        padding: 21px 25px 25px 39px;
+        background: linear-gradient(180deg, #fff 0%, #f8faf9 100%);
+      }
+
+      .workflow,
+      .preview-shell {
+        min-width: 0;
+        height: 435px;
+        border: 1px solid #b7c0ca;
+        background: #fff;
+        box-shadow: 8px 9px 0 rgba(24, 34, 42, .07);
+      }
+
+      .card-bar,
+      .browser-bar {
+        height: 42px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line);
+        background: #f7f8f9;
+        color: var(--quiet);
+        font-family: var(--mono);
+        font-size: 9px;
+      }
+
+      .repo { color: var(--muted); }
+      .card-state { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-family: Inter, sans-serif; font-size: 10px; font-weight: 760; }
+      .card-state .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+      .workflow-body { position: relative; height: 391px; padding: 16px 17px; overflow: hidden; }
+
+      .step {
+        position: relative;
+        display: grid;
+        grid-template-columns: 26px 1fr auto;
+        gap: 9px;
+        align-items: center;
+        min-height: 35px;
+        opacity: .26;
+      }
+
+      .step + .step { margin-top: 8px; }
+      .step::after { content: ""; position: absolute; left: 12px; top: 31px; height: 17px; border-left: 1px solid var(--line); }
+      .step:nth-of-type(3)::after { display: none; }
+      .step-icon { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: white; color: var(--quiet); font-size: 12px; font-weight: 800; }
+      .step b { display: block; font-size: 11px; }
+      .step small,
+      .step time { color: var(--quiet); font-family: var(--mono); font-size: 8px; }
+      .step time { align-self: start; padding-top: 7px; }
+      .step.complete,
+      .step.active { opacity: 1; }
+      .step.complete .step-icon,
+      .step.active .step-icon { border-color: #6fae8c; background: var(--green-soft); color: var(--green); }
+      .step.active .step-icon { box-shadow: 0 0 0 4px rgba(0, 125, 67, .08); }
+
+      .yaml {
+        margin: 14px 0 0 35px;
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--ink);
+        background: #f7f8f9;
+        padding: 10px 11px;
+        color: #33404b;
+        font-family: var(--mono);
+        font-size: 8px;
+        line-height: 1.7;
+      }
+
+      .yaml b { color: var(--green); font-weight: 700; }
+
+      .readiness {
+        margin: 13px 0 0 35px;
+        border: 1px solid var(--line);
+        background: white;
+      }
+
+      .readiness-head {
+        height: 37px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line-soft);
+        font-size: 10px;
+        font-weight: 750;
+      }
+
+      .readiness-score { margin-left: auto; color: var(--green); font-size: 15px; }
+      .adapter { height: 28px; display: grid; grid-template-columns: 58px 1fr 17px; align-items: center; gap: 7px; padding: 0 10px; border-bottom: 1px solid var(--line-soft); font-family: var(--mono); font-size: 8px; opacity: .18; }
+      .adapter:last-child { border-bottom: 0; }
+      .adapter b { color: var(--green); font-weight: 700; }
+      .adapter-check { width: 14px; height: 14px; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 50%; color: var(--green); font-family: Inter, sans-serif; font-size: 8px; font-weight: 900; }
+
+      .publish {
+        margin: 13px 0 0 35px;
+        min-height: 48px;
+        display: grid;
+        grid-template-columns: 26px 1fr;
+        gap: 9px;
+        align-items: center;
+        border: 1px solid #67ab87;
+        background: var(--green-soft);
+        padding: 8px 10px;
+        color: var(--green-dark);
+        opacity: .16;
+      }
+
+      .publish-icon { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 50%; color: var(--green); font-size: 13px; font-weight: 900; }
+      .publish span { min-width: 0; }
+      .publish b { display: block; font-size: 9px; letter-spacing: .04em; text-transform: uppercase; }
+      .publish code { display: block; margin-top: 2px; overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+
+      .browser-dots { display: inline-flex; gap: 4px; }
+      .browser-dots i { width: 7px; height: 7px; border: 1px solid #9aa5b0; border-radius: 50%; background: white; }
+      .browser-address { min-width: 0; flex: 1; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+      .browser-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-family: Inter, sans-serif; font-weight: 760; }
+      .browser-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+      .preview-window { position: relative; height: 391px; overflow: hidden; background: #f4f7f5; }
+      .empty-state,
+      .app-preview,
+      .blocked-preview { position: absolute; inset: 0; }
+
+      .empty-state {
+        display: grid;
+        place-items: center;
+        padding: 40px;
+        text-align: center;
+        background: radial-gradient(circle at 50% 44%, rgba(0, 125, 67, .08), transparent 35%), #f7f9f8;
+      }
+
+      .empty-state .orbit { position: relative; width: 116px; height: 116px; margin: 0 auto 18px; border: 1px solid var(--line); border-radius: 50%; }
+      .empty-state .orbit::before,
+      .empty-state .orbit::after { content: ""; position: absolute; inset: 17px; border: 1px solid var(--line); border-radius: 50%; }
+      .empty-state .orbit::after { inset: 37px; border-color: var(--green); background: var(--green-soft); }
+      .empty-state strong { display: block; font-size: 19px; letter-spacing: -.03em; }
+      .empty-state p { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+      .app-preview { opacity: 0; background: white; }
+      .app-preview img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: top left; }
+      .app-meta {
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        bottom: 13px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 46px;
+        padding: 8px 11px;
+        border: 1px solid rgba(13, 25, 18, .18);
+        background: rgba(255, 255, 255, .94);
+        box-shadow: 0 7px 24px rgba(9, 18, 13, .13);
+        backdrop-filter: blur(8px);
+      }
+
+      .app-meta strong { font-size: 12px; }
+      .app-tags { margin-left: auto; display: flex; gap: 5px; }
+      .app-tags span { border: 1px solid #8ab39c; background: var(--green-soft); padding: 4px 6px; color: var(--green-dark); font-family: var(--mono); font-size: 7px; font-weight: 700; }
+      .ready-pill { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-size: 9px; font-weight: 800; }
+      .ready-pill::before { content: "✓"; width: 16px; height: 16px; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 50%; }
+
+      .blocked-preview {
+        display: grid;
+        place-items: center;
+        padding: 26px;
+        background: #fffdf9;
+        opacity: 0;
+      }
+
+      .blocked-card { width: 100%; border: 1px solid #d58a27; background: white; }
+      .blocked-head { min-height: 68px; display: flex; align-items: center; gap: 13px; padding: 13px 15px; border-bottom: 1px solid #e8c38e; background: var(--amber-soft); }
+      .blocked-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--amber); border-radius: 50%; color: var(--amber); font-size: 18px; font-weight: 900; }
+      .blocked-head small { display: block; color: var(--amber); font-family: var(--mono); font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+      .blocked-head strong { display: block; margin-top: 3px; font-size: 16px; }
+      .blocked-score { margin-left: auto; color: var(--amber); font-size: 26px; font-weight: 820; letter-spacing: -.04em; }
+      .blocked-score small { display: inline; color: var(--quiet); font-family: Inter, sans-serif; font-size: 8px; font-weight: 600; letter-spacing: 0; }
+      .blocked-row { height: 39px; display: grid; grid-template-columns: 65px 1fr auto; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line-soft); font-size: 10px; }
+      .blocked-row code { color: var(--green); font-family: var(--mono); font-size: 8px; font-weight: 700; }
+      .blocked-row.unsupported { background: #fffaf1; }
+      .blocked-row.unsupported code { color: var(--amber); }
+      .blocked-foot { min-height: 62px; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 12px; padding: 11px 16px; background: var(--amber-soft); color: var(--amber); }
+      .blocked-foot b { display: block; font-size: 12px; }
+      .blocked-foot small { display: block; margin-top: 2px; color: #6f4a18; font-size: 8px; }
+
+      .veil { position: absolute; inset: 0; z-index: 20; pointer-events: none; background: white; opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <main id="demo" aria-label="PocketStack pull request preview workflow">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>PocketStack</div>
+        <div class="promise"><b>Docker Compose PR</b><span class="arrow">→</span>compatibility check<span class="arrow">→</span>static URL</div>
+        <div class="scope">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 20h19L12 3Z"></path><path d="M12 9v5"></path><path d="M12 17.5h.01"></path></svg>
+          Browser-compatible only
+        </div>
+      </header>
+
+      <section class="stage">
+        <article class="workflow">
+          <header class="card-bar">
+            <span class="repo">acme/storefront</span><span>·</span><span>PR #184</span>
+            <span class="card-state"><i class="dot"></i><span id="workflow-state">Running</span></span>
+          </header>
+          <div class="workflow-body">
+            <div class="step" id="step-change">
+              <span class="step-icon">✓</span>
+              <span><b>Compose change detected</b><small>pull_request · synchronize</small></span>
+              <time>0s</time>
+            </div>
+            <div class="yaml"><b>- uses:</b> ramazankara/pocketstack@v1<br><b>&nbsp;&nbsp;with:</b><br>&nbsp;&nbsp;&nbsp;&nbsp;<b>compose-file:</b> compose.yaml</div>
+            <div class="step" id="step-check">
+              <span class="step-icon">✓</span>
+              <span><b>Compatibility checked</b><small id="check-summary">3 services · readiness 100%</small></span>
+              <time>2s</time>
+            </div>
+            <div class="readiness">
+              <div class="readiness-head"><span id="readiness-title">Browser readiness</span><strong class="readiness-score" id="readiness-score">100%</strong></div>
+              <div class="adapter" id="adapter-web"><span>web</span><b>frontend</b><span class="adapter-check">✓</span></div>
+              <div class="adapter" id="adapter-api"><span>api</span><b>mock-http</b><span class="adapter-check">✓</span></div>
+              <div class="adapter" id="adapter-db"><span>db</span><b>postgres-pglite</b><span class="adapter-check">✓</span></div>
+            </div>
+            <div class="step" id="step-publish">
+              <span class="step-icon">✓</span>
+              <span><b id="publish-step-title">Static preview published</b><small id="publish-step-summary">Cloudflare Pages · stable branch alias</small></span>
+              <time>4s</time>
+            </div>
+            <div class="publish" id="publish-result">
+              <span class="publish-icon">✓</span>
+              <span><b id="publish-title">Preview ready</b><code id="publish-url">https://pr-184.my-app-previews.pages.dev</code></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="preview-shell">
+          <header class="browser-bar">
+            <span class="browser-dots"><i></i><i></i><i></i></span>
+            <span class="browser-address" id="browser-address">Waiting for compatibility check…</span>
+            <span class="browser-badge" id="browser-badge">Checking</span>
+          </header>
+          <div class="preview-window">
+            <div class="empty-state" id="empty-state">
+              <div>
+                <div class="orbit"></div>
+                <strong>One Action. One preview URL.</strong>
+                <p>PocketStack checks every active service before<br>anything is published.</p>
+              </div>
+            </div>
+
+            <div class="app-preview" id="storefront-preview">
+              <img src="/web/site/assets/storefront-preview.webp" alt="Pocket Supply storefront">
+              <div class="app-meta"><span><strong>Pocket Supply storefront</strong><span class="ready-pill">100% ready</span></span><span class="app-tags"><span>frontend</span><span>mock-http</span></span></div>
+            </div>
+
+            <div class="app-preview" id="sprint-preview">
+              <img src="/web/site/assets/sprint-board-preview.webp" alt="Northstar sprint board">
+              <div class="app-meta"><span><strong>Northstar sprint board</strong><span class="ready-pill">100% ready</span></span><span class="app-tags"><span>frontend</span><span>postgres-pglite</span></span></div>
+            </div>
+
+            <div class="app-preview" id="analytics-preview">
+              <img src="/web/site/assets/analytics-preview.webp" alt="Clearview analytics dashboard">
+              <div class="app-meta"><span><strong>Clearview analytics</strong><span class="ready-pill">100% ready</span></span><span class="app-tags"><span>static-web</span></span></div>
+            </div>
+
+            <div class="blocked-preview" id="blocked-preview">
+              <div class="blocked-card">
+                <header class="blocked-head">
+                  <span class="blocked-icon">!</span>
+                  <span><small>Compatibility report</small><strong>Deployment blocked</strong></span>
+                  <span class="blocked-score">75<small>/100</small></span>
+                </header>
+                <div class="blocked-row"><b>web</b><span>Vite application</span><code>frontend</code></div>
+                <div class="blocked-row"><b>api</b><span>OpenAPI fixtures</span><code>mock-http</code></div>
+                <div class="blocked-row"><b>db</b><span>Postgres seed SQL</span><code>postgres-pglite</code></div>
+                <div class="blocked-row unsupported"><b>cache</b><span>Redis daemon</span><code>unsupported</code></div>
+                <footer class="blocked-foot"><span class="blocked-icon">×</span><span><b>No app preview was published</b><small>Redis requires container semantics. Convert or remove 1 service.</small></span></footer>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+      <div class="veil" id="veil"></div>
+    </main>
+
+    <script>
+      const fps = 8;
+      const duration = 11;
+      const totalFrames = fps * duration;
+      const byId = (id) => document.getElementById(id);
+      const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+      const smooth = (value) => {
+        const x = clamp(value);
+        return x * x * (3 - (2 * x));
+      };
+      const ramp = (time, start, end) => smooth((time - start) / (end - start));
+      const windowOpacity = (time, enter, hold, exit) => ramp(time, enter, enter + .35) * (1 - ramp(time, hold, exit));
+
+      const elements = {
+        change: byId("step-change"),
+        check: byId("step-check"),
+        publish: byId("step-publish"),
+        web: byId("adapter-web"),
+        api: byId("adapter-api"),
+        db: byId("adapter-db"),
+        publishResult: byId("publish-result"),
+        empty: byId("empty-state"),
+        storefront: byId("storefront-preview"),
+        sprint: byId("sprint-preview"),
+        analytics: byId("analytics-preview"),
+        blocked: byId("blocked-preview"),
+        workflowState: byId("workflow-state"),
+        cardState: document.querySelector(".card-state"),
+        checkSummary: byId("check-summary"),
+        readinessTitle: byId("readiness-title"),
+        readinessScore: byId("readiness-score"),
+        publishStepTitle: byId("publish-step-title"),
+        publishStepSummary: byId("publish-step-summary"),
+        publishTitle: byId("publish-title"),
+        publishUrl: byId("publish-url"),
+        address: byId("browser-address"),
+        browserBadge: byId("browser-badge"),
+        veil: byId("veil"),
+      };
+
+      function setClass(element, name, enabled) {
+        element.classList.toggle(name, enabled);
+      }
+
+      window.renderReadmeDemo = (frame) => {
+        const time = clamp(frame, 0, totalFrames - 1) / fps;
+        const isBlocked = time >= 8.35;
+        const checked = time >= 1.35;
+        const published = time >= 2.85 && !isBlocked;
+
+        setClass(elements.change, "active", time < .9);
+        setClass(elements.change, "complete", time >= .9);
+        setClass(elements.check, "active", time >= .9 && time < 2.3);
+        setClass(elements.check, "complete", time >= 2.3);
+        setClass(elements.publish, "active", time >= 2.3 && time < 3.2);
+        setClass(elements.publish, "complete", time >= 3.2);
+
+        elements.web.style.opacity = String(.18 + (.82 * ramp(time, 1.05, 1.45)));
+        elements.api.style.opacity = String(.18 + (.82 * ramp(time, 1.35, 1.75)));
+        elements.db.style.opacity = String(.18 + (.82 * ramp(time, 1.65, 2.05)));
+        elements.publishResult.style.opacity = String(.16 + (.84 * ramp(time, 2.55, 3.15)));
+
+        const storefrontOpacity = windowOpacity(time, 3.15, 5.1, 5.45);
+        const sprintOpacity = windowOpacity(time, 5.1, 6.75, 7.1);
+        const analyticsOpacity = windowOpacity(time, 6.75, 8.15, 8.48);
+        const blockedOpacity = ramp(time, 8.3, 8.75);
+        elements.storefront.style.opacity = String(storefrontOpacity);
+        elements.sprint.style.opacity = String(sprintOpacity);
+        elements.analytics.style.opacity = String(analyticsOpacity);
+        elements.blocked.style.opacity = String(blockedOpacity);
+        elements.empty.style.opacity = String(1 - ramp(time, 2.75, 3.2));
+
+        if (isBlocked) {
+          elements.workflowState.textContent = "Blocked";
+          elements.cardState.style.color = "var(--amber)";
+          elements.checkSummary.textContent = "3 of 4 services · readiness 75%";
+          elements.readinessTitle.textContent = "Unsupported service found";
+          elements.readinessScore.textContent = "75%";
+          elements.readinessScore.style.color = "var(--amber)";
+          elements.publishStepTitle.textContent = "App deployment blocked";
+          elements.publishStepSummary.textContent = "Compatibility report remains shareable";
+          elements.publish.querySelector(".step-icon").textContent = "×";
+          elements.publish.querySelector(".step-icon").style.borderColor = "var(--amber)";
+          elements.publish.querySelector(".step-icon").style.background = "var(--amber-soft)";
+          elements.publish.querySelector(".step-icon").style.color = "var(--amber)";
+          elements.publishTitle.textContent = "No app preview published";
+          elements.publishUrl.textContent = "cache · redis:7 · unsupported";
+          elements.publishResult.style.borderColor = "#d58a27";
+          elements.publishResult.style.background = "var(--amber-soft)";
+          elements.publishResult.style.color = "var(--amber)";
+          elements.publishResult.querySelector(".publish-icon").textContent = "×";
+          elements.publishResult.querySelector(".publish-icon").style.borderColor = "var(--amber)";
+          elements.publishResult.querySelector(".publish-icon").style.color = "var(--amber)";
+          elements.address.textContent = "Compatibility report · PR #184";
+          elements.browserBadge.textContent = "No app preview";
+          elements.browserBadge.style.color = "var(--amber)";
+        } else {
+          elements.workflowState.textContent = published ? "Ready" : (checked ? "Checking" : "Running");
+          elements.cardState.style.color = "var(--green)";
+          elements.checkSummary.textContent = checked ? "3 services · readiness 100%" : "Analyzing active services";
+          elements.readinessTitle.textContent = "Browser readiness";
+          elements.readinessScore.textContent = checked ? "100%" : "—";
+          elements.readinessScore.style.color = "var(--green)";
+          elements.publishStepTitle.textContent = "Static preview published";
+          elements.publishStepSummary.textContent = "Cloudflare Pages · stable branch alias";
+          elements.publish.querySelector(".step-icon").textContent = "✓";
+          elements.publish.querySelector(".step-icon").style.borderColor = "";
+          elements.publish.querySelector(".step-icon").style.background = "";
+          elements.publish.querySelector(".step-icon").style.color = "";
+          elements.publishTitle.textContent = "Preview ready";
+          elements.publishUrl.textContent = "https://pr-184.my-app-previews.pages.dev";
+          elements.publishResult.style.borderColor = "#67ab87";
+          elements.publishResult.style.background = "var(--green-soft)";
+          elements.publishResult.style.color = "var(--green-dark)";
+          elements.publishResult.querySelector(".publish-icon").textContent = "✓";
+          elements.publishResult.querySelector(".publish-icon").style.borderColor = "var(--green)";
+          elements.publishResult.querySelector(".publish-icon").style.color = "var(--green)";
+          elements.address.textContent = published ? "https://pr-184.my-app-previews.pages.dev" : "Waiting for compatibility check…";
+          elements.browserBadge.textContent = published ? "Preview ready" : "Checking";
+          elements.browserBadge.style.color = "var(--green)";
+        }
+
+        const fadeOut = ramp(time, 10.35, 10.85);
+        elements.veil.style.opacity = String(fadeOut);
+        return { frame, time, totalFrames };
+      };
+
+      window.renderReadmeDemo(0);
+      window.README_DEMO_READY = document.fonts.ready.then(() => Promise.all(
+        Array.from(document.images).map((image) => image.complete ? Promise.resolve() : new Promise((resolve, reject) => {
+          image.addEventListener("load", resolve, { once: true });
+          image.addEventListener("error", reject, { once: true });
+        }))
+      ));
+    </script>
+  </body>
+</html>

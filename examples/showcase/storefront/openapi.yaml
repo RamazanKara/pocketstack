@@ -1,0 +1,20 @@
+openapi: 3.0.3
+info:
+  title: Storefront catalog
+  version: 1.0.0
+paths:
+  /products:
+    get:
+      summary: List the demo catalog
+      responses:
+        "200":
+          description: Product catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      type: object

@@ -1,0 +1,81 @@
+name: PocketStack Preview
+description: Analyze a browser-compatible Docker Compose PR and publish a static Cloudflare Pages preview.
+author: PocketStack
+
+branding:
+  icon: box
+  color: green
+
+inputs:
+  github-token:
+    description: GitHub token used to create or update the sticky pull-request comment.
+    required: false
+  compose-file:
+    description: Compose file to analyze, relative to the repository root.
+    required: false
+    default: compose.yaml
+  cloudflare-project:
+    description: Existing Cloudflare Pages Direct Upload project name.
+    required: false
+  cloudflare-account-id:
+    description: Cloudflare account ID. Required for same-repository preview deployments.
+    required: false
+  cloudflare-api-token:
+    description: Cloudflare API token with Pages edit permission. Required for same-repository preview deployments.
+    required: false
+
+outputs:
+  readiness-status:
+    description: "Browser readiness status: ready, partial, blocked, error, or closed."
+    value: ${{ steps.preview.outputs.readiness_status }}
+  readiness-score:
+    description: Percentage of active Compose services that map to browser adapters.
+    value: ${{ steps.preview.outputs.readiness_score }}
+  preview-url:
+    description: Stable PR preview URL. Set only when an app preview is ready and deployed.
+    value: ${{ steps.preview.outputs.preview_url }}
+  deployment-url:
+    description: Immutable Cloudflare Pages deployment URL when Cloudflare returns one.
+    value: ${{ steps.preview.outputs.deployment_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check out the pull request
+      if: github.event_name == 'pull_request' && github.event.action != 'closed'
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        persist-credentials: false
+
+    - name: Set up Go
+      if: github.event_name == 'pull_request' && github.event.action != 'closed'
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache: false
+
+    - name: Build the trusted PocketStack CLI
+      if: github.event_name == 'pull_request' && github.event.action != 'closed'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "${RUNNER_TEMP}/pocketstack-action"
+        go build \
+          -C "${GITHUB_ACTION_PATH}" \
+          -trimpath \
+          -ldflags "-X github.com/ramazankara/pocketstack/internal/cli.version=v1.2.0-action" \
+          -o "${RUNNER_TEMP}/pocketstack-action/pocketstack" \
+          ./cmd/pocketstack
+
+    - name: Analyze and publish the preview
+      id: preview
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_COMPOSE_FILE: ${{ inputs.compose-file }}
+        INPUT_CLOUDFLARE_PROJECT: ${{ inputs.cloudflare-project }}
+        INPUT_CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        INPUT_CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        POCKETSTACK_CLI: ${{ runner.temp }}/pocketstack-action/pocketstack
+      run: node "${GITHUB_ACTION_PATH}/scripts/action/pocketstack-preview.mjs"

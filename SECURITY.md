@@ -5,6 +5,14 @@ include a PocketStack backend, runner, or Docker daemon integration.
 
 ## Security Model
 
+- The GitHub Action runs on `pull_request`, builds the trusted CLI from the
+  selected Action revision, and does not start Docker or execute project package
+  scripts in the runner.
+- Action analysis confines Compose, bind-mount, `env_file`, and labeled asset
+  paths to the checkout and rejects symlink escapes. Rendered report content is
+  length-capped and escaped.
+- Fork and Dependabot pull requests analyze without receiving Cloudflare
+  deployment secrets or a writable pull-request token.
 - The CLI reads local Compose projects and copies selected browser-safe assets
   into an output directory.
 - Generated demos run in the viewer's browser and may use browser storage such
@@ -27,7 +35,8 @@ escaped before they are rendered in the demo dashboard.
 
 | Version | Supported |
 | ------- | --------- |
-| 1.1.x   | ✅        |
+| 1.2.x   | ✅        |
+| 1.1.x   | ❌        |
 | < 1.1   | ❌        |
 
 Security fixes land on the latest minor release. Upgrade to the newest release

@@ -6,6 +6,36 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Per-release detail lives under [docs/release-notes/](docs/release-notes/index.md).
 
+## [1.2.0] - 2026-07-18
+
+### Added
+- A self-contained composite GitHub Action that analyzes Compose pull requests,
+  generates browser-compatible projects, deploys stable Cloudflare Pages branch
+  aliases, updates one sticky PR comment, and writes the job summary.
+- Static compatibility, error, and closed-preview reports. Partial and blocked
+  projects fail the check and never present arbitrary containers as working app
+  previews.
+- Three complete showcase applications: Pocket Supply storefront
+  (`frontend` + `mock-http`), Northstar sprint board (`frontend` +
+  `postgres-pglite`), and Clearview analytics (`static-web`).
+- A showcase deployment workflow and a moving `v1` Action tag maintained by the
+  release workflow.
+
+### Changed
+- Reframed the website, README, and documentation around the pull-request
+  workflow: add one Action and receive a static preview for every compatible
+  Compose PR.
+- The release and Action workflows pin third-party Actions and Wrangler to
+  reviewed revisions.
+
+### Security
+- Action analysis confines the Compose file, bind mounts, `env_file` entries,
+  labeled assets, and symlink targets to the checked-out repository.
+- Fork and Dependabot pull requests analyze without receiving deployment
+  secrets or a writable comment token.
+- Untrusted analysis content is length-capped and escaped before it reaches
+  static HTML reports or GitHub-flavored Markdown.
+
 ## [1.1.1] - 2026-06-29
 
 Documentation and internal-structure release. The CLI behaves identically to
@@ -78,6 +108,7 @@ Hardening release. See [release notes](docs/release-notes/v1.0.1.md).
 ## [1.0.0] - 2026-05-26
 Initial browser-native PocketStack release.
 
+[1.2.0]: https://github.com/ramazankara/pocketstack/releases/tag/v1.2.0
 [1.1.1]: https://github.com/ramazankara/pocketstack/releases/tag/v1.1.1
 [1.1.0]: https://github.com/ramazankara/pocketstack/releases/tag/v1.1.0
 [1.0.3]: https://github.com/ramazankara/pocketstack/releases/tag/v1.0.3

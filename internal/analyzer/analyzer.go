@@ -105,17 +105,101 @@ type adapterContext struct {
 }
 
 func AnalyzeFile(composeFile string) (*Analysis, error) {
+	return AnalyzeFileWithin(composeFile, "")
+}
+
+// AnalyzeFileWithin analyzes a Compose project while restricting every local
+// file reference to allowedRoot. It is used by the GitHub Action when the
+// Compose file is controlled by a pull request and deployment credentials are
+// present. Passing an empty allowedRoot preserves the regular CLI behavior.
+func AnalyzeFileWithin(composeFile, allowedRoot string) (*Analysis, error) {
 	absCompose, err := filepath.Abs(composeFile)
 	if err != nil {
 		return nil, err
+	}
+	if allowedRoot != "" {
+		if err := requirePathWithin(absCompose, allowedRoot); err != nil {
+			return nil, fmt.Errorf("compose file is outside the allowed project root: %w", err)
+		}
 	}
 	project, err := compose.LoadFile(absCompose)
 	if err != nil {
 		return nil, err
 	}
 	projectRoot := filepath.Dir(absCompose)
+	if allowedRoot != "" {
+		if err := validateProjectPaths(project, projectRoot, allowedRoot); err != nil {
+			return nil, err
+		}
+	}
 	analysis := Analyze(project, projectRoot, absCompose)
 	return &analysis, nil
+}
+
+func validateProjectPaths(project *compose.Project, projectRoot, allowedRoot string) error {
+	for serviceName, service := range project.Services {
+		for _, volume := range service.Volumes {
+			if !volume.IsBindLike() || volume.Source == "" {
+				continue
+			}
+			if err := requirePathWithin(volume.ResolveSource(projectRoot), allowedRoot); err != nil {
+				return fmt.Errorf("service %s bind source %q is outside the allowed project root: %w", serviceName, volume.Source, err)
+			}
+		}
+		for _, envFile := range service.EnvFiles() {
+			if err := requirePathWithin(resolveProjectPath(projectRoot, envFile.Path), allowedRoot); err != nil {
+				return fmt.Errorf("service %s env_file %q is outside the allowed project root: %w", serviceName, envFile.Path, err)
+			}
+		}
+		labels := service.LabelMap()
+		for _, key := range []string{LabelWASIModule, LabelMockOpenAPI, LabelMockFixtures, LabelDBInit, LabelDBSeed} {
+			rawPath := strings.TrimSpace(labels[key])
+			if rawPath == "" {
+				continue
+			}
+			if err := requirePathWithin(resolveProjectPath(projectRoot, rawPath), allowedRoot); err != nil {
+				return fmt.Errorf("service %s label %s=%q is outside the allowed project root: %w", serviceName, key, rawPath, err)
+			}
+		}
+	}
+	return nil
+}
+
+func requirePathWithin(candidate, allowedRoot string) error {
+	root, err := filepath.Abs(allowedRoot)
+	if err != nil {
+		return err
+	}
+	path, err := filepath.Abs(candidate)
+	if err != nil {
+		return err
+	}
+	if !pathWithin(root, path) {
+		return fmt.Errorf("%s is not inside %s", path, root)
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if !pathWithin(resolvedRoot, resolvedPath) {
+		return fmt.Errorf("%s resolves outside %s", path, resolvedRoot)
+	}
+	return nil
+}
+
+func pathWithin(root, candidate string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 func Analyze(project *compose.Project, projectRoot, composeFile string) Analysis {
