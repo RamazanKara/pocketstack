@@ -222,9 +222,9 @@ function frontendEnvironment(env = {}) {
 function environmentEntries(env = {}) {
   if (Array.isArray(env)) return env.map(String);
   if (typeof env === "string") {
-    return env.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    return env.split(/\r?\n/).filter((item) => item.trim());
   }
-  return Object.entries(env).map(([key, value]) => `${key}=${value}`);
+  return Object.entries(env).map(([key, value]) => `${key}=${value ?? ""}`);
 }
 function splitEnvironmentEntry(entry) {
   const text = String(entry || "");
