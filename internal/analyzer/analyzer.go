@@ -1136,7 +1136,7 @@ func mergeEnvironment(values map[string]string, entries []string) {
 		if !ok {
 			value = ""
 		}
-		values[key] = strings.TrimSpace(value)
+		values[key] = value
 	}
 }
 
