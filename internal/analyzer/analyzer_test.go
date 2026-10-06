@@ -295,6 +295,7 @@ func TestAnalyzeFrontendEnvFile(t *testing.T) {
 VITE_API_URL=https://from-env-file.example.test
 VITE_SHARED=file
 export VITE_EXPORTED=yes
+VITE_QUOTED="  spaced value  "
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -315,6 +316,8 @@ services:
     environment:
       VITE_SHARED: inline
       VITE_FLAG: "true"
+      VITE_INLINE: "  inline value  "
+      VITE_EMPTY:
     volumes:
       - .:/workspace
 `), 0o644); err != nil {
@@ -329,7 +332,7 @@ services:
 	if analysis.Mode != ModeBrowserNative || service.Adapter != AdapterFrontend || !service.BrowserNative {
 		t.Fatalf("analysis = %#v, service = %#v", analysis, service)
 	}
-	wantEnv := "VITE_API_URL=https://from-env-file.example.test\nVITE_EXPORTED=yes\nVITE_FLAG=true\nVITE_LOCAL=local\nVITE_SHARED=inline"
+	wantEnv := "VITE_API_URL=https://from-env-file.example.test\nVITE_EMPTY=\nVITE_EXPORTED=yes\nVITE_FLAG=true\nVITE_INLINE=  inline value  \nVITE_LOCAL=local\nVITE_QUOTED=  spaced value  \nVITE_SHARED=inline"
 	if service.Config["env"] != wantEnv {
 		t.Fatalf("frontend env = %q, want %q", service.Config["env"], wantEnv)
 	}

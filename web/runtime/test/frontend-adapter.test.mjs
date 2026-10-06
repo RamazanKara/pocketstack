@@ -130,3 +130,17 @@ test("frontend adapter parses Compose environment for WebContainer spawn", async
     DEBUG: "false",
   });
 });
+
+test("frontend environment preserves significant spaces and empty values", async () => {
+  const { frontendEnvironment } = await loadFrontendModule();
+
+  assert.deepEqual(frontendEnvironment("PADDED=  value  \nEMPTY=\n  \nTOKEN=a=b=="), {
+    PADDED: "  value  ",
+    EMPTY: "",
+    TOKEN: "a=b==",
+  });
+  assert.deepEqual(frontendEnvironment({ EMPTY: null, OMITTED: undefined }), {
+    EMPTY: "",
+    OMITTED: "",
+  });
+});

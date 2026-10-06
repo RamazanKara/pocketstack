@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import test from "node:test";
+import vm from "node:vm";
 
 test("runtime script exposes adapter handlers", async () => {
   const source = await readFile(new URL("../../../internal/generator/runtime/app.js", import.meta.url), "utf8");
@@ -70,4 +71,43 @@ test("mock service worker supports OpenAPI path templates", async () => {
   assert.match(source, /matchRoute/);
   assert.match(source, /params\[parameter\[1\]\]/);
   assert.match(source, /\^\\\{\(\[\^\/\]\+\)\\\}\$/);
+});
+
+test("Studio uploads preserve empty and whitespace-significant environment values", async () => {
+  const source = await readFile(new URL("../../studio/app.js", import.meta.url), "utf8");
+  const context = {
+    Blob,
+    document: {
+      querySelector: () => ({ value: "", addEventListener() {} }),
+    },
+  };
+  vm.runInNewContext(source.replace(/^import .+;\n/, ""), context);
+  const fileIndex = context.createFileIndex([
+    context.sampleFile("package.json", '{"scripts":{"dev":"vite"}}'),
+    context.sampleFile(".env", 'EMPTY=from-file\nPADDED=from-file\nQUOTED="  quoted value  "\nSINGLE=\'  single value  \'\n'),
+  ]);
+
+  for (const environment of [
+    { EMPTY: null, OMITTED: undefined, PADDED: "  value \t ", TOKEN: "a=b==", FALSE: false, ZERO: 0 },
+    ["EMPTY", "OMITTED=", "PADDED=  value \t ", "TOKEN=a=b==", "FALSE=false", "ZERO=0"],
+  ]) {
+    const service = await context.analyzeService("app", {
+      image: "node:22-alpine",
+      env_file: ".env",
+      environment,
+      volumes: [".:/app"],
+    }, fileIndex);
+
+    assert.equal(service.status, "ready");
+    assert.equal(service.config.env, [
+      "EMPTY=",
+      "FALSE=false",
+      "OMITTED=",
+      "PADDED=  value \t ",
+      "QUOTED=  quoted value  ",
+      "SINGLE=  single value  ",
+      "TOKEN=a=b==",
+      "ZERO=0",
+    ].join("\n"));
+  }
 });
