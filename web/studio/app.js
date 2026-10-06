@@ -905,7 +905,7 @@ function environmentList(rawEnvironment) {
   if (Array.isArray(rawEnvironment)) return rawEnvironment.map(String).sort();
   if (rawEnvironment && typeof rawEnvironment === "object") {
     return Object.entries(rawEnvironment)
-      .map(([key, value]) => `${key}=${value}`)
+      .map(([key, value]) => `${key}=${value ?? ""}`)
       .sort();
   }
   return [];
@@ -993,7 +993,7 @@ function mergeEnvironment(values, entries) {
     const [key, ...rest] = String(entry).split("=");
     const name = key.trim();
     if (!name) continue;
-    values.set(name, rest.length === 0 ? "" : rest.join("=").trim());
+    values.set(name, rest.length === 0 ? "" : rest.join("="));
   }
 }
 
