@@ -6,6 +6,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Per-release detail lives under [docs/release-notes/](docs/release-notes/index.md).
 
+## [Unreleased]
+
+### Fixed
+- Preserve significant whitespace in inline and quoted env-file values through
+  analysis and browser startup. Valueless environment mappings now use an empty
+  string, matching bare list entries, instead of the literal text `<nil>`.
+
 ## [1.2.0] - 2026-07-18
 
 ### Added

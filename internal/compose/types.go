@@ -84,7 +84,7 @@ func (s Service) EnvironmentList() []string {
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			values = append(values, fmt.Sprintf("%s=%v", key, typed[key]))
+			values = append(values, key+"="+environmentValue(typed[key]))
 		}
 	case map[any]any:
 		valuesByKey := map[string]string{}
@@ -92,7 +92,7 @@ func (s Service) EnvironmentList() []string {
 		for key, value := range typed {
 			keyString := fmt.Sprint(key)
 			keys = append(keys, keyString)
-			valuesByKey[keyString] = fmt.Sprint(value)
+			valuesByKey[keyString] = environmentValue(value)
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
@@ -106,6 +106,15 @@ func (s Service) EnvironmentList() []string {
 		values = append(values, typed...)
 	}
 	return values
+}
+
+func environmentValue(value any) string {
+	// Browser previews do not inherit the generator host's environment. Keep a
+	// valueless mapping entry consistent with its bare-key list equivalent.
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
 }
 
 func (s Service) EnvFiles() []EnvFileSpec {

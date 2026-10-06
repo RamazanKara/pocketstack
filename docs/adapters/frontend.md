@@ -42,6 +42,9 @@ runtime.
 
 - Required env files must be present in the uploaded/generated project.
 - Optional long-syntax env files may be missing and are reported as warnings.
+- Inline values and quoted env-file values retain significant whitespace.
+- Valueless entries use an empty string; the generator's host environment is
+  never inherited by the preview.
 
 ## Talking to mock and database services
 
