@@ -5,8 +5,8 @@ code can call. They are served by a **service worker running inside the demo
 tab** — not by a backend.
 
 ```text
-/__pocketstack/mock/<service>/<route>
-/__pocketstack/db/<service>/query
+./__pocketstack/mock/<service>/<route>
+./__pocketstack/db/<service>/query
 ```
 
 ::: warning
@@ -16,8 +16,9 @@ server to reach — the service worker answers requests in the tab. Treat `<serv
 and `<route>` as placeholders for your service name and route path.
 :::
 
-Use them for custom demo controls, fixture explorers, or small query panels that
-live next to an embedded demo. For embedding context, see
+Use them from custom controls inside the loaded demo, after starting the
+corresponding service. A parent page embedding a demo is not automatically
+controlled by its service worker. For embedding context, see
 [website integration](/deploy/website-integration).
 
 ## Mock route endpoint
@@ -26,7 +27,7 @@ For a `mock-http` service named `<service>`, routes from its OpenAPI spec and
 JSON fixtures are registered at:
 
 ```text
-/__pocketstack/mock/<service>/<route>
+./__pocketstack/mock/<service>/<route>
 ```
 
 The `<route>` mirrors the path defined in the service's OpenAPI document or
@@ -36,13 +37,13 @@ the registered response examples and fixtures, with CORS/preflight support.
 Example — fetch a mocked API route for a service named `api`:
 
 ```js
-const response = await fetch("/__pocketstack/mock/api/users");
-const users = await response.json();
+const response = await fetch("./__pocketstack/mock/api/health");
+const health = await response.json();
 ```
 
-```sh
-curl https://example.com/demo/__pocketstack/mock/api/users
-```
+The `api/health` route is supplied by `examples/mock-api`. Run this code in
+that demo's browser context. `curl` and server-side HTTP clients cannot reach
+these service-worker routes.
 
 ::: info
 A `mock-http` service returns the fixture/OpenAPI examples it was generated
@@ -59,7 +60,7 @@ For a `postgres-pglite` or `sqlite` service named `<service>`, SQL runs against
 the in-browser database at:
 
 ```text
-POST /__pocketstack/db/<service>/query
+POST ./__pocketstack/db/<service>/query
 ```
 
 - **Method:** `POST`
@@ -72,20 +73,12 @@ adapters.
 Example — run a query with `fetch` against a service named `db`:
 
 ```js
-const response = await fetch("/__pocketstack/db/db/query", {
+const response = await fetch("./__pocketstack/db/db/query", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ sql: "select 1" }),
 });
 const payload = await response.json();
-```
-
-Example — the same query with `curl`:
-
-```sh
-curl -X POST https://example.com/demo/__pocketstack/db/db/query \
-  -H "content-type: application/json" \
-  -d '{"sql":"select 1"}'
 ```
 
 The response shape is **adapter-native**: PGlite returns PGlite's result JSON,
@@ -102,10 +95,10 @@ from the demo's assets, and persists only to browser storage under the demo's
 
 ## Notes for custom UI
 
-- Use **relative** URLs (`/__pocketstack/...`) so the demo keeps working under a
-  subpath. Generated demos use relative paths throughout.
+- Resolve **relative** URLs (`./__pocketstack/...`) from the demo directory so
+  they retain its hosting subpath. A leading `/` starts at the origin root.
 - These URLs are only live once the demo's service worker has registered, so
-  call them from code running inside (or alongside) the loaded demo.
+  call them from code running inside the loaded demo after starting the service.
 - The available `<service>` names and `<route>` paths come from the generated
   [manifest](/deploy/manifest): each service's `name`, `adapter`, and `config`
   describe what is registered.

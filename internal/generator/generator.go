@@ -81,6 +81,18 @@ func Generate(options Options) (*Result, error) {
 	if !analysis.BrowserNative {
 		return nil, unsupportedError(analysis)
 	}
+	outputDir, err := filepath.Abs(options.OutputDir)
+	if err != nil {
+		return nil, err
+	}
+	for _, service := range analysis.Services {
+		for _, asset := range service.Assets {
+			rel, err := filepath.Rel(outputDir, asset.Source)
+			if err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))) {
+				return nil, fmt.Errorf("output directory %s contains source asset %s; choose a separate output directory", outputDir, asset.Source)
+			}
+		}
+	}
 
 	if err := os.MkdirAll(options.OutputDir, 0o755); err != nil {
 		return nil, err
@@ -108,7 +120,7 @@ func Generate(options Options) (*Result, error) {
 	}
 
 	for _, service := range analysis.Services {
-		manifestService, err := copyServiceAssets(assetsDir, service, manifest.StorageNamespace)
+		manifestService, err := copyServiceAssets(assetsDir, service, manifest.StorageNamespace, outputDir)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +143,7 @@ func Generate(options Options) (*Result, error) {
 	return &Result{OutputDir: options.OutputDir, Mode: analysis.Mode, Manifest: manifest}, nil
 }
 
-func copyServiceAssets(assetsDir string, service analyzer.ServiceAnalysis, storageNamespace string) (ManifestService, error) {
+func copyServiceAssets(assetsDir string, service analyzer.ServiceAnalysis, storageNamespace, outputDir string) (ManifestService, error) {
 	serviceDir := filepath.Join(assetsDir, service.Name)
 	manifestService := ManifestService{
 		Name:             service.Name,
@@ -157,13 +169,13 @@ func copyServiceAssets(assetsDir string, service analyzer.ServiceAnalysis, stora
 		}
 		switch asset.Kind {
 		case "directory":
-			files, err := copyDirectoryAsset(asset, targetAbs)
+			files, err := copyDirectoryAsset(asset, targetAbs, outputDir)
 			if err != nil {
 				return manifestService, fmt.Errorf("copy %s assets for %s: %w", asset.Name, service.Name, err)
 			}
 			manifestAsset.Files = files
 		case "sql-directory":
-			files, err := copyTreeFiltered(asset.Source, targetAbs, func(rel string, entry os.DirEntry) bool {
+			files, err := copyTreeFiltered(asset.Source, targetAbs, outputDir, func(rel string, entry os.DirEntry) bool {
 				return strings.EqualFold(filepath.Ext(rel), ".sql")
 			})
 			if err != nil {
@@ -171,7 +183,7 @@ func copyServiceAssets(assetsDir string, service analyzer.ServiceAnalysis, stora
 			}
 			manifestAsset.Files = files
 		case "json-directory":
-			files, err := copyTreeFiltered(asset.Source, targetAbs, func(rel string, entry os.DirEntry) bool {
+			files, err := copyTreeFiltered(asset.Source, targetAbs, outputDir, func(rel string, entry os.DirEntry) bool {
 				return strings.EqualFold(filepath.Ext(rel), ".json")
 			})
 			if err != nil {
@@ -259,6 +271,9 @@ func demoStorageNamespace(composeFile string) string {
 }
 
 func unsupportedError(analysis *analyzer.Analysis) error {
+	if len(analysis.Services) == 0 {
+		return fmt.Errorf("project has no active services; declare a service without profiles before generating a demo")
+	}
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "project is not browser-native yet; unsupported services:")
 	for _, service := range analysis.Services {
@@ -274,30 +289,30 @@ func unsupportedError(analysis *analyzer.Analysis) error {
 	return fmt.Errorf("%s", builder.String())
 }
 
-func copyTree(source, destination string) ([]string, error) {
-	return copyTreeFiltered(source, destination, func(string, os.DirEntry) bool {
+func copyTree(source, destination, excludedDir string) ([]string, error) {
+	return copyTreeFiltered(source, destination, excludedDir, func(string, os.DirEntry) bool {
 		return true
 	})
 }
 
-func copyTreeFiltered(source, destination string, include func(string, os.DirEntry) bool) ([]string, error) {
-	return copyTreeFilteredWithSkip(source, destination, include, skipProjectDir)
+func copyTreeFiltered(source, destination, excludedDir string, include func(string, os.DirEntry) bool) ([]string, error) {
+	return copyTreeFilteredWithSkip(source, destination, excludedDir, include, skipProjectDir)
 }
 
-func copyDirectoryAsset(asset analyzer.AssetAnalysis, destination string) ([]string, error) {
+func copyDirectoryAsset(asset analyzer.AssetAnalysis, destination, excludedDir string) ([]string, error) {
 	if asset.Name == "static" {
-		return copyTreeFilteredWithSkipTransform(asset.Source, destination, func(string, os.DirEntry) bool {
+		return copyTreeFilteredWithSkipTransform(asset.Source, destination, excludedDir, func(string, os.DirEntry) bool {
 			return true
 		}, nil, staticAssetTransform)
 	}
-	return copyTree(asset.Source, destination)
+	return copyTree(asset.Source, destination, excludedDir)
 }
 
-func copyTreeFilteredWithSkip(source, destination string, include func(string, os.DirEntry) bool, skip func(string) bool) ([]string, error) {
-	return copyTreeFilteredWithSkipTransform(source, destination, include, skip, nil)
+func copyTreeFilteredWithSkip(source, destination, excludedDir string, include func(string, os.DirEntry) bool, skip func(string) bool) ([]string, error) {
+	return copyTreeFilteredWithSkipTransform(source, destination, excludedDir, include, skip, nil)
 }
 
-func copyTreeFilteredWithSkipTransform(source, destination string, include func(string, os.DirEntry) bool, skip func(string) bool, transform func(string, []byte) []byte) ([]string, error) {
+func copyTreeFilteredWithSkipTransform(source, destination, excludedDir string, include func(string, os.DirEntry) bool, skip func(string) bool, transform func(string, []byte) []byte) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -310,8 +325,11 @@ func copyTreeFilteredWithSkipTransform(source, destination string, include func(
 		if rel == "." {
 			return os.MkdirAll(destination, 0o755)
 		}
-		if entry.IsDir() && skip != nil && skip(entry.Name()) {
-			return filepath.SkipDir
+		if entry.IsDir() {
+			excludedRel, _ := filepath.Rel(excludedDir, path)
+			if excludedRel == "." || (skip != nil && skip(entry.Name())) {
+				return filepath.SkipDir
+			}
 		}
 		target := filepath.Join(destination, rel)
 		if entry.IsDir() {

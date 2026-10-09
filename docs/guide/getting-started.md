@@ -62,9 +62,10 @@ Serve the output from any static host:
 npx serve pocketstack-demo
 ```
 
-Some adapters use service workers, WebContainer, or PGlite and require HTTPS
-plus COOP/COEP headers. PocketStack emits host configuration for them; see
-[hosting](/deploy/hosting).
+Service workers need HTTPS or localhost. Frontend/WebContainer and the WASI
+fallback also need COOP/COEP headers; a plain `serve` invocation does not add
+them. PocketStack emits host configuration for those adapters; see
+[hosting](/deploy/hosting). PGlite and SQLite do not require isolation headers.
 
 ## Try a known-compatible project
 

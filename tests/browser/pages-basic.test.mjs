@@ -2,10 +2,11 @@ import { createServer } from "node:http";
 import { access, stat } from "node:fs/promises";
 import { createReadStream, existsSync } from "node:fs";
 import { extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { chromium, webkit } from "@playwright/test";
 
-const root = resolve(new URL("../..", import.meta.url).pathname);
+const root = fileURLToPath(new URL("../..", import.meta.url));
 const pagesDir = resolve(root, "dist", "pages");
 const port = Number(process.env.POCKETSTACK_BROWSER_TEST_PORT || 4297);
 const baseURL = `http://127.0.0.1:${port}`;

@@ -4,12 +4,12 @@ Use labels when PocketStack cannot safely infer intent from a service's image
 and mounts. This page is the full label reference.
 
 `static-web` is **autodetected** from a supported image plus a document-root
-mount — it has no label. The other five adapters are selected explicitly with
-`pocketstack.adapter`.
+mount — it has no label. The other five adapters accept `pocketstack.adapter`;
+`frontend` and `postgres-pglite` can also be autodetected.
 
 ```yaml
 labels:
-  pocketstack.adapter: frontend|wasi|mock-http|postgres-pglite|sqlite
+  pocketstack.adapter: frontend
   pocketstack.frontend.install: npm install
   pocketstack.frontend.start: npm run dev -- --host 0.0.0.0
   pocketstack.frontend.port: "5173"
@@ -20,7 +20,7 @@ labels:
   pocketstack.mock.port: "8080"
   pocketstack.db.init: init.sql
   pocketstack.db.seed: seed.sql
-  pocketstack.db.persist: indexeddb|memory
+  pocketstack.db.persist: indexeddb
 ```
 
 ## Selecting an adapter

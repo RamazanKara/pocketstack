@@ -169,9 +169,9 @@ Two web apps are built from the same repo but are not embedded in the CLI:
   for browser-only triage).
 - **`web/site`** — the landing page.
 
-Three production-quality applications under `examples/showcase/` exercise the
-same generator and browser adapters used by the Action. The maintainer showcase
-workflow deploys them to stable Cloudflare Pages branches.
+Three example applications under `examples/showcase/` exercise the same
+generator and browser adapters used by the Action. `make smoke` generates all
+three locally. This repository has no showcase deployment workflow.
 
 These ship to the public GitHub Pages site alongside selected generated demos.
 

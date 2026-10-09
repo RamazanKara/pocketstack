@@ -45,6 +45,9 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 	jsonOutput := fs.Bool("json", false, "print JSON")
 	safeRoot := fs.String("safe-root", "", "restrict local project files to this directory")
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
 		return 2
 	}
 	resolvedCompose, err := resolveComposeFile(*composeFile)
@@ -104,6 +107,9 @@ func demo(args []string, stdout, stderr io.Writer) int {
 	outputDir := fs.String("o", "pocketstack-demo", "output directory")
 	safeRoot := fs.String("safe-root", "", "restrict local project files to this directory")
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
 		return 2
 	}
 	resolvedCompose, err := resolveComposeFile(*composeFile)
@@ -151,7 +157,7 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(`PocketStack turns browser-compatible Docker Compose projects into static demos.
 
 Usage:
-  pocketstack analyze [-f compose.yaml] [--json]
-  pocketstack demo [-f compose.yaml] [-o pocketstack-demo]
+  pocketstack analyze [-f compose.yaml] [--json] [--safe-root directory]
+  pocketstack demo [-f compose.yaml] [-o pocketstack-demo] [--safe-root directory]
   pocketstack version`))
 }

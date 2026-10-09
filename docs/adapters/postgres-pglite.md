@@ -6,7 +6,8 @@ serves a resettable in-browser database.
 
 ## How it's selected
 
-Set `pocketstack.adapter=postgres-pglite` and provide SQL through the
+Postgres images are autodetected. Use `pocketstack.adapter=postgres-pglite`
+for an explicit mapping and provide SQL through the
 `pocketstack.db.*` labels or bind mounts under `/docker-entrypoint-initdb.d`.
 
 ```yaml

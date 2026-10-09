@@ -3,8 +3,8 @@
 PocketStack has three commands: `analyze`, `demo`, and `version`. The CLI inspects and packages a local Compose project; it never starts a server or contacts a backend.
 
 ```text
-pocketstack analyze [-f compose.yaml] [--json]
-pocketstack demo [-f compose.yaml] [-o pocketstack-demo]
+pocketstack analyze [-f compose.yaml] [--json] [--safe-root directory]
+pocketstack demo [-f compose.yaml] [-o pocketstack-demo] [--safe-root directory]
 pocketstack version
 ```
 
@@ -24,6 +24,7 @@ Flags:
 | --- | --- | --- |
 | `-f` | (resolved) | Path to the Compose file. If omitted, PocketStack searches the working directory (see [Compose-file resolution](#compose-file-resolution)). |
 | `--json` | `false` | Print the full analysis as JSON instead of the human-readable report. |
+| `--safe-root` | (unrestricted) | Confine Compose, bind mounts, env files, and labeled assets to this directory; reject paths or symlinks outside it. |
 
 ### `demo`
 
@@ -39,6 +40,11 @@ Flags:
 | --- | --- | --- |
 | `-f` | (resolved) | Path to the Compose file (same resolution as `analyze`). |
 | `-o` | `pocketstack-demo` | Output directory for the generated demo. |
+| `--safe-root` | (unrestricted) | Apply the same project-path restrictions as `analyze`. |
+
+Output may be inside a source directory; it is excluded from copied assets.
+The output directory must not contain source assets, to avoid overwriting them.
+Projects with no active services cannot generate a demo.
 
 On success it prints the mode and the absolute output path:
 
@@ -56,6 +62,9 @@ Prints the CLI version.
 pocketstack version
 ```
 
+Use `pocketstack --help`, `pocketstack analyze --help`, or
+`pocketstack demo --help` for usage. Help exits successfully.
+
 ## `analyze` output structure
 
 The human-readable report is printed in this order:
@@ -65,15 +74,15 @@ The human-readable report is printed in this order:
 - **Per-service lines.** A browser-native service prints its adapter and, when known, its asset source:
 
   ```text
-    web: static-web adapter from ./site
+    web: static-web adapter from /path/to/site
   ```
 
   An unsupported service prints its blockers and suggestions:
 
   ```text
     cache: unsupported in browser-native mode
-      - stateful service has no honest browser adapter
-      suggestion: replace with SQLite, PGlite, fixtures, or in-browser mock state
+      - image "redis:7" is a stateful service without a direct browser-native container adapter
+      suggestion: For demos, replace this stateful service with SQLite, PGlite, fixtures, or in-browser mock state.
   ```
 
   Browser-native services may also print `- warning:` lines for behavior that can't be reproduced exactly.
@@ -93,21 +102,18 @@ The human-readable report is printed in this order:
     "score": 100,                // percentage of services that are browser-native
     "browserNativeServices": 1,
     "totalServices": 1,
-    "summary": "all services browser-native"
+    "summary": "all services are browser-native"
   },
   "services": [
     {
       "name": "web",
       "browserNative": true,
       "adapter": "static-web",
-      "assetSource": "./site",
-      "warnings": [],
-      "unsupported": [],         // reasons, when not browser-native
-      "suggestions": []          // conversion hints, when not browser-native
+      "assetSource": "/path/to/site",
+      "hostRequirements": {}     // empty optional slices are omitted
     }
   ],
-  "warnings": [],
-  "nextSteps": [],
+  "nextSteps": ["Run `pocketstack demo` to generate a static browser-native demo."],
   "hostRequirements": {}         // e.g. cross-origin isolation, when a demo needs it
 }
 ```
@@ -131,6 +137,6 @@ If none is found, it exits with an error asking you to pass `-f`.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Success. |
+| `0` | Success or help. `analyze` also returns 0 for valid but incompatible projects; inspect readiness to gate deployment. |
 | `1` | Error — bad or missing Compose file, or generation failed. |
 | `2` | Usage error — unknown command or bad flags. |

@@ -25,7 +25,7 @@ There are six adapters. Five are selected with the `pocketstack.adapter` label;
 | [`static-web`](/adapters/static-web) | `nginx` / `httpd` / `caddy` static sites | **Autodetected** from the image + a document-root mount (no label) |
 | [`frontend`](/adapters/frontend) | Node/Bun projects that run from source | Autodetected (Node/Bun image + `package.json`), or `pocketstack.adapter=frontend` |
 | [`mock-http`](/adapters/mock-http) | OpenAPI + JSON fixtures as browser routes | `pocketstack.adapter=mock-http` |
-| [`postgres-pglite`](/adapters/postgres-pglite) | Postgres-shaped demos backed by PGlite | `pocketstack.adapter=postgres-pglite` |
+| [`postgres-pglite`](/adapters/postgres-pglite) | Postgres-shaped demos backed by PGlite | Autodetected from a Postgres image, or `pocketstack.adapter=postgres-pglite` |
 | [`sqlite`](/adapters/sqlite) | SQLite demos seeded from SQL or a `.db` file | `pocketstack.adapter=sqlite` |
 | [`wasi`](/adapters/wasi) | Prebuilt `.wasm` modules | `pocketstack.adapter=wasi` |
 
@@ -60,6 +60,12 @@ to adapters. A few directives are handled specifically:
   adapter.
 - **`depends_on:` / `healthcheck:`** — parsed but ignored. A static demo has no
   startup ordering or health gating.
+
+This is not a full Compose validator. Directives outside the modeled subset,
+including `privileged`, `devices`, and `network_mode`, are currently ignored.
+An adapter match does not prove that those runtime requirements can be met.
+A project containing only profile-gated services is blocked with zero active
+services.
 
 ## Readiness report
 

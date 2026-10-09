@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ramazankara/pocketstack/internal/compose"
 )
 
 func TestAnalyzeStaticNginxProject(t *testing.T) {
@@ -40,6 +42,21 @@ services:
 	}
 	if analysis.Readiness.Status != "ready" || analysis.Readiness.Score != 100 {
 		t.Fatalf("readiness = %#v", analysis.Readiness)
+	}
+}
+
+func TestAnalyzeNoActiveServices(t *testing.T) {
+	for _, services := range []map[string]compose.Service{
+		{},
+		{"cache": {Image: "redis:7", Profiles: []string{"dev"}}},
+	} {
+		analysis := Analyze(&compose.Project{Services: services}, t.TempDir(), "compose.yaml")
+		if analysis.BrowserNative || analysis.Mode != ModeUnsupported || analysis.Readiness.Status != "blocked" || analysis.Readiness.Score != 0 || analysis.Readiness.TotalServices != 0 {
+			t.Fatalf("analysis = %#v", analysis)
+		}
+		if !containsReason(analysis.Warnings, "no active services") || !containsReason(analysis.NextSteps, "without profiles") {
+			t.Fatalf("warnings = %#v, next steps = %#v", analysis.Warnings, analysis.NextSteps)
+		}
 	}
 }
 

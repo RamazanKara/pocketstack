@@ -296,6 +296,9 @@ func (v *VolumeSpec) UnmarshalYAML(node *yaml.Node) error {
 
 func (v *VolumeSpec) parseScalar(raw string) {
 	parts := strings.Split(raw, ":")
+	if len(parts) > 2 && len(parts[0]) == 1 && strings.HasPrefix(strings.ReplaceAll(parts[1], `\`, "/"), "/") && strings.HasPrefix(parts[2], "/") {
+		parts = append([]string{parts[0] + ":" + parts[1]}, parts[2:]...)
+	}
 	switch len(parts) {
 	case 1:
 		v.Target = parts[0]
@@ -329,7 +332,9 @@ func (v VolumeSpec) ResolveSource(projectRoot string) string {
 }
 
 func isBindSource(source string) bool {
-	return source == "." ||
+	source = strings.ReplaceAll(source, `\`, "/")
+	return source == "." || source == ".." ||
+		(len(source) >= 3 && source[1] == ':' && source[2] == '/') ||
 		strings.HasPrefix(source, "./") ||
 		strings.HasPrefix(source, "../") ||
 		strings.HasPrefix(source, "/") ||
@@ -347,6 +352,11 @@ func LoadFile(path string) (*Project, error) {
 	}
 	if len(project.Services) == 0 {
 		return nil, fmt.Errorf("compose file %s has no services", path)
+	}
+	for name := range project.Services {
+		if name == "." || !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) {
+			return nil, fmt.Errorf("invalid service name %q: must be a single local path component", name)
+		}
 	}
 	return &project, nil
 }

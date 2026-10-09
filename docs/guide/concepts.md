@@ -27,7 +27,7 @@ Put together: PocketStack only generates **browser-native** demos because the **
 ## Glossary
 
 **Adapter**
-: The mapping from a Compose service to a specific browser primitive. PocketStack has six: `static-web`, `frontend`, `mock-http`, `postgres-pglite`, `sqlite`, and `wasi`. `static-web` is autodetected; the others are selected with a `pocketstack.adapter` label. See [adapters](/adapters/).
+: The mapping from a Compose service to a specific browser primitive. PocketStack has six: `static-web`, `frontend`, `mock-http`, `postgres-pglite`, `sqlite`, and `wasi`. `static-web` is autodetected; the others accept a `pocketstack.adapter` label. Frontend and Postgres images can also be autodetected. See [adapters](/adapters/).
 
 **Readiness score**
 : The percentage of services in a stack that are browser-native, reported by `analyze` as `Browser readiness: N%`. It comes with a `status` of `ready`, `partial`, or `blocked`, plus per-service blockers and project-level next steps. The point is to make unsupported services *actionable*, not just to grade the project.

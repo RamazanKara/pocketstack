@@ -4,7 +4,10 @@ Common questions and errors when analyzing Compose files and running generated d
 
 ## A demo looks empty when opened from `file://`
 
-A `static-web` demo previews fine when you double-click `index.html`, but adapters that use a **service worker** (mock HTTP, browser databases, the frontend runtime) need an `http(s)` origin — browsers don't register service workers on `file://`. Serve the folder instead of opening the file:
+The dashboard fetches its manifest, so even a `static-web` demo should be served
+over HTTP. Adapters that use a **service worker** need HTTPS or localhost;
+browsers don't register service workers on `file://`. Serve the folder instead
+of opening the file:
 
 ```sh
 npx serve pocketstack-demo
@@ -34,12 +37,13 @@ Prefer `static-web` and `mock-http` for demos that must work without network acc
 
 ## "My service is reported unsupported"
 
-This is by design, not a bug: PocketStack won't fake a service it can't represent honestly in the browser. Read the readiness report — each unsupported service prints concrete `reasons` and one or more `suggestions`:
+Read the readiness report: an unmatched service includes `unsupported` reasons
+and conversion `suggestions`. For a service using `redis:7`:
 
 ```text
   cache: unsupported in browser-native mode
-    - stateful service has no honest browser adapter
-    suggestion: replace with SQLite, PGlite, fixtures, or in-browser mock state
+    - image "redis:7" is a stateful service without a direct browser-native container adapter
+    suggestion: For demos, replace this stateful service with SQLite, PGlite, fixtures, or in-browser mock state.
 ```
 
 Run `pocketstack analyze -f compose.yaml` to see them, then reshape the service into a browser-native form. The [convert a service](/convert/) guide walks through the common conversions (databases to PGlite/SQLite, APIs to `mock-http`, and so on).

@@ -16,10 +16,10 @@ browser adapters, generates static output, deploys it to a stable Cloudflare
 Pages URL, and updates one pull-request comment on every push.
 
 > [!IMPORTANT]
-> PocketStack does not run arbitrary containers. If any active service needs
-> Docker, Linux networking, a privileged process, or another unsupported
-> runtime, the Action blocks the app deployment and publishes a compatibility
-> report that says exactly why.
+> PocketStack does not run arbitrary containers. Services without a supported
+> adapter block deployment and receive a compatibility report. The analyzer
+> checks an adapter-specific subset of Compose; review runtime requirements
+> such as privileged execution and container networking before publishing.
 
 **[See the workflow](https://ramazankara.github.io/pocketstack/)** ·
 **[Set up PR previews](docs/guide/pr-previews.md)** ·
@@ -71,7 +71,7 @@ permissions, lifecycle, and security model.
 The job summary is always written. For same-repository PRs, one sticky comment
 is created and updated instead of adding a new comment on every commit.
 
-## Three working examples
+## Three example applications
 
 These recognizable apps exercise the same adapters and generation path as PR
 previews:
@@ -100,7 +100,7 @@ PocketStack has six browser adapters:
 
 A project generates only when every active service maps to one of these
 adapters. Arbitrary images, Dockerfile builds, Redis, opaque volumes, privileged
-containers, and real container networking do not silently fall back to a
+containers, and real container networking have no fallback to a
 hosted runner. See [adapters](docs/adapters/index.md) and the
 [conversion guide](docs/convert/index.md).
 
@@ -111,11 +111,13 @@ analyzer and generator for local use:
 
 ```sh
 # Explain every service mapping and blocker.
-pocketstack analyze -f compose.yaml
+pocketstack analyze -f examples/static-site/compose.yaml
 
 # Generate only when the whole active stack is browser-compatible.
-pocketstack demo -f compose.yaml -o pocketstack-demo
+pocketstack demo -f examples/static-site/compose.yaml -o pocketstack-demo
 ```
+
+Run these examples from the repository root, or substitute your own Compose file.
 
 Download a binary from
 [GitHub Releases](https://github.com/ramazankara/pocketstack/releases/latest)

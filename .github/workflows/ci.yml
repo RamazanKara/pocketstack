@@ -3,7 +3,6 @@ name: ci
 
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -32,10 +31,4 @@ jobs:
           node-version: "26"
           cache: npm
       - run: npm ci --no-audit
-      - run: npm run build:wasi-example
-      - run: npm run build:runtime
-      - run: go vet ./...
-      - run: go test ./...
-      - run: npm run test:runtime -- --test-concurrency=2
-      - run: npm run test:action -- --test-concurrency=2
-      - run: go build -o bin/pocketstack ./cmd/pocketstack
+      - run: make build lint test

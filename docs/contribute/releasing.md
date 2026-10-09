@@ -28,7 +28,8 @@ npm ci
 npm run build:wasi-example
 npm run build:runtime
 npm run test:runtime
-go test ./...
+npm run test:action
+go test -race ./...
 go vet ./...
 make smoke
 make release-dry-run

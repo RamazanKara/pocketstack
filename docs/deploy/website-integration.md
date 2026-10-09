@@ -89,18 +89,18 @@ users before loading a header-dependent demo. See the
 
 ## Driving service endpoints from custom UI
 
-A generated demo exposes browser-only URLs that custom frontend code (sitting
-next to the embedded demo) can call:
+A generated demo exposes browser-only URLs that custom code inside the loaded
+demo can call after starting the corresponding service:
 
 ```text
-/__pocketstack/mock/<service>/<route>
-/__pocketstack/db/<service>/query
+./__pocketstack/mock/<service>/<route>
+./__pocketstack/db/<service>/query
 ```
 
 For example, a small query panel can post SQL to a database service:
 
 ```js
-const response = await fetch("/__pocketstack/db/db/query", {
+const response = await fetch("./__pocketstack/db/db/query", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ sql: "select 1" }),
@@ -110,7 +110,8 @@ const payload = await response.json();
 
 These endpoints exist only inside the generated browser demo and are served by a
 service worker in the tab. They are **not** Docker networking, Postgres TCP, or
-a general backend proxy. Use them for custom demo controls, fixture explorers,
+a general backend proxy. An embedding parent page is not automatically
+controlled by the demo's service worker. Use them for custom demo controls, fixture explorers,
 or small query panels. For the full request/response shapes and more examples,
 see [service URLs](/reference/service-urls).
 

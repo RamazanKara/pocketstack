@@ -20,7 +20,7 @@ assets. The manifest is **version `2`** and always sets `browserOnly: true`.
 | `composeFile` | string | Path to the Compose file the demo was generated from. |
 | `storageNamespace` | string | Stable per-project namespace (e.g. `ps-1a2b3c4d…`) used by browser-database adapters for IndexedDB/storage keys. |
 | `readiness` | object | Browser-readiness summary (see [readiness](#readiness)). |
-| `hostRequirements` | object | Cross-origin isolation / network needs (see [host requirements](#host-requirements)). Omitted when empty. |
+| `hostRequirements` | object | Cross-origin isolation / network needs (see [host requirements](#host-requirements)). `{}` when empty. |
 | `warnings` | string[] | Project-level warnings (COOP/COEP, network access, skipped profile services). Omitted when empty. |
 | `nextSteps` | string[] | Project-level conversion next steps. Omitted when empty. |
 | `services` | object[] | One [service entry](#service-fields) per generated service. |
@@ -70,7 +70,7 @@ Each entry in `services[]` is a `ManifestService`:
 | `assets` | object[] | Copied [asset entries](#asset-fields). Omitted when empty. |
 | `config` | object | String key/value adapter config (e.g. `projectPath`, `openapiPath`, `fixturesPath`, `initScripts`, `seedPath`, `storageNamespace`). Omitted when empty. |
 | `warnings` | string[] | Service-level warnings. Omitted when empty. |
-| `hostRequirements` | object | Per-service [host requirements](#host-requirements). Omitted when empty. |
+| `hostRequirements` | object | Per-service [host requirements](#host-requirements). `{}` when empty. |
 
 ::: tip
 `config` keys depend on the adapter. Database adapters
@@ -87,7 +87,7 @@ copied under `assets/<service>/`:
 | --- | --- | --- |
 | `name` | string | Logical asset name (e.g. `static`, `project`, `module`, `openapi`, `fixtures`, `init`, `seed`). |
 | `kind` | string | How it was copied: `file`, `directory`, `sql-directory`, or `json-directory`. |
-| `path` | string | Root-relative path to the copied asset, e.g. `assets/<service>/<target>`. |
+| `path` | string | Path relative to the demo directory, e.g. `assets/<service>/<target>`. |
 | `files` | string[] | For directory kinds, the list of copied files (relative paths). Omitted for single files. |
 | `target` | string | Destination path relative to the service asset folder. Omitted when empty. |
 
@@ -100,16 +100,16 @@ A trimmed, realistic manifest for a two-service demo (a `mock-http` API and a
 {
   "version": "2",
   "generatedAt": "2026-06-28T10:15:00Z",
-  "mode": "browser-only",
+  "mode": "browser-native",
   "browserOnly": true,
-  "composeFile": "compose.yaml",
+  "composeFile": "/path/to/compose.yaml",
   "storageNamespace": "ps-1a2b3c4d5e6f7081",
   "readiness": {
     "status": "ready",
     "browserNativeServices": 2,
     "totalServices": 2,
     "score": 100,
-    "summary": "All services are browser-native."
+    "summary": "all services are browser-native"
   },
   "services": [
     {
@@ -129,7 +129,7 @@ A trimmed, realistic manifest for a two-service demo (a `mock-http` API and a
           "name": "fixtures",
           "kind": "json-directory",
           "path": "assets/api/fixtures",
-          "files": ["users.json", "orders.json"],
+          "files": ["orders.json", "users.json"],
           "target": "fixtures"
         }
       ],
@@ -145,15 +145,15 @@ A trimmed, realistic manifest for a two-service demo (a `mock-http` API and a
       "browserNative": true,
       "assets": [
         {
-          "name": "init",
+          "name": "init-scripts",
           "kind": "sql-directory",
-          "path": "assets/db/init",
+          "path": "assets/db/init-scripts",
           "files": ["001-schema.sql", "002-seed.sql"],
-          "target": "init"
+          "target": "init-scripts"
         }
       ],
       "config": {
-        "initPath": "assets/db/init",
+        "initScripts": "assets/db/init-scripts/001-schema.sql\nassets/db/init-scripts/002-seed.sql",
         "storageNamespace": "ps-1a2b3c4d5e6f7081"
       }
     }

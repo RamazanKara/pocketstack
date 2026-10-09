@@ -221,9 +221,13 @@ func Analyze(project *compose.Project, projectRoot, composeFile string) Analysis
 	analysis := Analysis{
 		ComposeFile:   composeFile,
 		ProjectRoot:   projectRoot,
-		BrowserNative: true,
+		BrowserNative: len(names) > 0,
 		Mode:          ModeBrowserNative,
 		Services:      make([]ServiceAnalysis, 0, len(names)),
+	}
+	if len(names) == 0 {
+		analysis.Mode = ModeUnsupported
+		analysis.Warnings = append(analysis.Warnings, "The project has no active services; profile-gated services are skipped.")
 	}
 
 	for _, name := range names {
@@ -371,6 +375,9 @@ func browserReadiness(services []ServiceAnalysis) Readiness {
 }
 
 func projectNextSteps(services []ServiceAnalysis) []string {
+	if len(services) == 0 {
+		return []string{"Declare a service without profiles before generating a demo."}
+	}
 	steps := []string{}
 	allNative := true
 	for _, service := range services {

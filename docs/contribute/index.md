@@ -22,6 +22,8 @@ over a partial demo that looks more compatible than it is.
 - **Go** — to build the CLI and run `go test` / `go vet`.
 - **Node 26** — the JavaScript toolchain targets Node 26. Use `nvm use` to
   select it (CI and release workflows pin `node-version: "26"`).
+- **GNU Make and a C compiler** — `make test` runs Go's race detector.
+- **Linux or WSL** — Action test fixtures use Unix executable scripts.
 
 ```sh
 nvm use
@@ -50,11 +52,7 @@ Run these before opening a pull request:
 
 ```sh
 npm ci
-npm run build:wasi-example
-npm run build:runtime
-npm run test:runtime
-go test ./...
-go vet ./...
+make build lint test
 make smoke
 ```
 
@@ -63,6 +61,10 @@ make smoke
   you run it.
 - `make smoke` builds the binary, regenerates every example demo, and runs the
   generated-demo checks.
+
+The maintenance CI workflow runs `make build lint test` on pushes and manual
+dispatch. Run it locally when GitHub Actions is unavailable. Browser checks and
+release checks remain separate.
 
 ::: tip
 `make release-check` is the **full gate** — it additionally runs lint/`go vet`, a

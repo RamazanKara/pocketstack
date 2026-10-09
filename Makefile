@@ -3,7 +3,7 @@ PORT ?= 4173
 .PHONY: test build lint demo runtime studio media smoke pages release-check release-dry-run verify-checksums
 
 test:
-	go test ./...
+	go test -race ./...
 	npm run test:runtime
 	npm run test:action
 

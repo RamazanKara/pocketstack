@@ -15,16 +15,18 @@ Before opening a change:
 
 ```sh
 npm ci
-npm run build:wasi-example
-npm run build:runtime
-npm run test:runtime
-npm run test:action
+make build lint test
+make smoke
+```
+
+The local gate uses GNU Make, Go, Node 26, and a C compiler for `go test -race`.
+Use Linux or WSL for the Action tests, whose executable fixtures use Unix
+shebangs. Browser checks are separate:
+
+```sh
 npm run showcases:install
 npm run showcases:build
 npm run test:showcases
-go test ./...
-go vet ./...
-make smoke
 ```
 
 `make smoke` builds the binary, regenerates every example demo, and runs the

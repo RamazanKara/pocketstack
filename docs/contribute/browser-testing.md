@@ -16,9 +16,10 @@ The suite serves `dist/pages` locally and checks:
 - the generated manifest loads;
 - the static demo preview loads.
 
-CI installs Playwright browsers and runs the suite against Chrome/Chromium,
-Microsoft Edge, and Safari-class WebKit. Locally, the test skips browsers that
-are not installed unless `POCKETSTACK_REQUIRE_BROWSERS=1` is set.
+The suite tries Chrome/Chromium, Microsoft Edge, and Safari-class WebKit.
+It skips browsers that are not installed unless `POCKETSTACK_REQUIRE_BROWSERS=1`
+is set. Maintenance CI does not install or run these browsers; run the suite
+locally with Playwright browsers or `CHROME_BIN` / `EDGE_BIN` paths.
 
 ## When to run it
 
@@ -39,8 +40,7 @@ does not replace adapter unit tests or per-demo Playwright coverage.
 ## Reading failures
 
 An Edge skip on a local machine usually means Microsoft Edge is not installed.
-CI treats browser skips as failures because it sets
-`POCKETSTACK_REQUIRE_BROWSERS=1`.
+Set `POCKETSTACK_REQUIRE_BROWSERS=1` when every configured browser must pass.
 
 If a generated demo fails locally, rebuild the site first:
 

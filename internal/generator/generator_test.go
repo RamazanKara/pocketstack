@@ -3,6 +3,7 @@ package generator
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -256,6 +257,62 @@ services:
 	}
 	if !strings.Contains(err.Error(), "browser-only") {
 		t.Fatalf("error = %q", err)
+	}
+}
+
+func TestGenerateRejectsProfileOnlyProject(t *testing.T) {
+	root := t.TempDir()
+	composeFile := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(composeFile, []byte("services: {cache: {image: redis:7, profiles: [dev]}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "out")
+	if _, err := Generate(Options{ComposeFile: composeFile, OutputDir: output}); err == nil || !strings.Contains(err.Error(), "no active services") {
+		t.Fatalf("error = %v, want no active services", err)
+	}
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("output should not be created: %v", err)
+	}
+}
+
+func TestGenerateExcludesNestedOutput(t *testing.T) {
+	for _, image := range []string{"node:22", "nginx:alpine"} {
+		t.Run(image, func(t *testing.T) {
+			root := t.TempDir()
+			for name, content := range map[string]string{"package.json": `{"scripts":{"dev":"vite"}}`, "index.html": "<h1>source</h1>"} {
+				if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			composeFile := filepath.Join(root, "compose.yaml")
+			body := "services:\n  app:\n    image: " + image + "\n    volumes: [.:/usr/share/nginx/html]\n"
+			if err := os.WriteFile(composeFile, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(root, "pocketstack-demo")
+			for i := 0; i < 2; i++ {
+				if i == 1 && runtime.GOOS == "windows" {
+					output = filepath.Join(root, "POCKETSTACK-DEMO")
+				}
+				result, err := Generate(Options{ComposeFile: composeFile, OutputDir: output})
+				if err != nil {
+					t.Fatal(err)
+				}
+				files := result.Manifest.Services[0].Assets[0].Files
+				if !containsString(files, "index.html") || containsString(files, "pocketstack-demo") {
+					t.Fatalf("copied files = %#v", files)
+				}
+			}
+			for _, unsafeOutput := range []string{root, filepath.Dir(root)} {
+				if _, err := Generate(Options{ComposeFile: composeFile, OutputDir: unsafeOutput}); err == nil || !strings.Contains(err.Error(), "contains source asset") {
+					t.Fatalf("output %s: error = %v", unsafeOutput, err)
+				}
+			}
+			data, err := os.ReadFile(filepath.Join(root, "index.html"))
+			if err != nil || string(data) != "<h1>source</h1>" {
+				t.Fatalf("source = %q, error = %v", data, err)
+			}
+		})
 	}
 }
 

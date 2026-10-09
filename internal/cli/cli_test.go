@@ -145,3 +145,74 @@ func TestRunVersionAndUnknownCommand(t *testing.T) {
 		t.Fatalf("unknown command exit code = %d, want 2", code)
 	}
 }
+
+func TestRunUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		code    int
+		message string
+	}{
+		{"no command", nil, 0, "Usage:"},
+		{"help", []string{"--help"}, 0, "Usage:"},
+		{"help command", []string{"help"}, 0, "Usage:"},
+		{"analyze help", []string{"analyze", "--help"}, 0, "safe-root"},
+		{"demo help", []string{"demo", "-h"}, 0, "safe-root"},
+		{"analyze bad flag", []string{"analyze", "--missing"}, 2, "flag provided but not defined"},
+		{"demo bad flag", []string{"demo", "--missing"}, 2, "flag provided but not defined"},
+		{"missing flag value", []string{"demo", "-o"}, 2, "flag needs an argument"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := Run(tc.args, &stdout, &stderr); code != tc.code {
+				t.Fatalf("code = %d, want %d; stderr = %q", code, tc.code, stderr.String())
+			}
+			if !strings.Contains(stdout.String()+stderr.String(), tc.message) {
+				t.Fatalf("stdout = %q, stderr = %q, want %q", stdout.String(), stderr.String(), tc.message)
+			}
+		})
+	}
+}
+
+func TestRunComposeDiscovery(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, command := range []string{"analyze", "demo"} {
+		var stdout, stderr bytes.Buffer
+		if code := Run([]string{command}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "no compose file found") {
+			t.Fatalf("%s: code = %d, stderr = %q", command, code, stderr.String())
+		}
+	}
+	names := []string{"docker-compose.yaml", "docker-compose.yml", "compose.yml", "compose.yaml"}
+	for _, name := range names {
+		if err := os.WriteFile(name, []byte("services: {cache: {image: redis:7}}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := resolveComposeFile("")
+		if err != nil || got != filepath.Join(root, name) {
+			t.Fatalf("file = %q, error = %v, want %s", got, err, name)
+		}
+	}
+	for _, command := range []string{"analyze", "demo"} {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{command}, &stdout, &stderr)
+		if command == "analyze" {
+			if code != 0 || !strings.Contains(stdout.String(), "Next steps:") || !strings.Contains(stdout.String(), "suggestion:") {
+				t.Fatalf("analyze: code = %d, stdout = %q", code, stdout.String())
+			}
+		} else if code != 1 || !strings.Contains(stderr.String(), "unsupported services") {
+			t.Fatalf("demo: code = %d, stderr = %q", code, stderr.String())
+		}
+	}
+}
