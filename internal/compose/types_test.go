@@ -181,3 +181,112 @@ func TestResolveVolumeSource(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigDiagnostics(t *testing.T) {
+	for _, tc := range []struct{ name, input, want string }{
+		{"environment scalar", "services:\n  app:\n    environment: BAD\n", "line 3: environment must be a mapping"},
+		{"environment nested", "services:\n  app:\n    environment:\n      KEY: [bad]\n", "line 4: environment.KEY must be a scalar"},
+		{"environment list map", "services:\n  app:\n    environment:\n      - KEY: bad\n", "line 4: environment entries must be scalar"},
+		{"labels scalar", "services:\n  app:\n    labels: wrong\n", "line 3: labels must be a mapping"},
+		{"labels nested", "services:\n  app:\n    labels: {key: {nested: bad}}\n", "line 3: labels.key must be a scalar"},
+		{"env path missing", "services:\n  app:\n    env_file: {required: false}\n", "line 3: env_file mapping requires a path"},
+		{"env path empty", "services:\n  app:\n    env_file: ''\n", "line 3: env_file path must be a non-empty string"},
+		{"env path numeric", "services:\n  app:\n    env_file: 42\n", "line 3: env_file path must be a non-empty string"},
+		{"env list null", "services:\n  app:\n    env_file: [null]\n", "line 3: env_file path must be a non-empty string"},
+		{"env required", "services:\n  app:\n    env_file: {path: app.env, required: maybe}\n", "line 3: env_file.required must be true or false"},
+		{"env required numeric", "services:\n  app:\n    env_file: {path: app.env, required: 0}\n", "line 3: env_file.required must be true or false"},
+		{"null service", "services:\n  app: null\n", "line 2: service must be a mapping"},
+		{"service name", "services:\n  '../bad': {}\n", "line 2: invalid service name"},
+		{"typed field", "services:\n  app:\n    profiles: demo\n", "line 3"},
+		{"duplicate", "services:\n  app: {}\n  app: {}\n", "line 3"},
+		{"port shape", "services:\n  app:\n    ports: [[80]]\n", "unsupported port syntax at line 3"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "compose.yaml")
+			if err := os.WriteFile(file, []byte(tc.input), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadFile(file)
+			if err == nil || !strings.Contains(err.Error(), file) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want filename and %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestConfigValidationPreservesComposeForms(t *testing.T) {
+	for _, input := range []string{
+		"services: {app: {image: redis, environment: {A: null, B: false, C: 42}, labels: {enabled: null}}}",
+		"services: {app: {environment: [BARE, 'A=b=c'], labels: [enabled, 'key=value']}}",
+		"services: {app: {env_file: [{path: optional.env, required: 'false'}, app.env]}}",
+		"services: {app: {env_file: {path: optional.env, required: ' false '}}}",
+		"services: {app: {env_file: null, environment: null, labels: null, x-custom: {anything: true}}}",
+		"x-env: &env {A: value}\nx-service: &base {image: redis, environment: *env}\nservices: {app: {<<: *base}}",
+		"x-env: &env {A: value}\nservices: {app: {environment: {<<: *env, B: second}}}",
+		"x-service: &base {image: redis}\nservices: {app: *base}",
+		"x-services: &services {app: {image: redis}}\nservices: *services",
+		"x-path: &path app.env\nservices: {app: {env_file: *path}}",
+	} {
+		t.Run(input, func(t *testing.T) {
+			project, err := parseProject([]byte(input))
+			if err != nil || len(project.Services) != 1 {
+				t.Fatalf("project = %+v, error = %v", project, err)
+			}
+		})
+	}
+}
+
+func FuzzParseProject(f *testing.F) {
+	for _, input := range []string{"", "services: {app: {image: nginx}}", "services: {app: {env_file: [{required: false}]}}", "services: {app: {ports: ['80:80'], volumes: ['./site:/srv:ro']}}", "x-base: &base {environment: {A: null}}\nservices: {app: {<<: *base}}", "services: &loop {app: *loop}"} {
+		f.Add([]byte(input))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		project, err := parseProject(data)
+		if err != nil {
+			return
+		}
+		if len(project.Services) == 0 {
+			t.Fatal("accepted project without services")
+		}
+		for name, service := range project.Services {
+			if name == "." || !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) {
+				t.Fatalf("accepted unsafe service name %q", name)
+			}
+			service.LabelMap()
+			service.EnvironmentList()
+			for _, file := range service.EnvFiles() {
+				if strings.TrimSpace(file.Path) == "" {
+					t.Fatal("accepted empty env_file path")
+				}
+			}
+		}
+	})
+}
+
+func FuzzPortSpec(f *testing.F) {
+	for _, input := range []string{"80", "'[::1]:8080:80/UDP'", "3000-3005:3000-3005", "{target: 53, protocol: udp}", "[[80]]", "'${PORT}'"} {
+		f.Add([]byte(input))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var port PortSpec
+		if err := yaml.Unmarshal(data, &port); err == nil && port.Protocol != strings.ToLower(port.Protocol) {
+			t.Fatalf("protocol was not normalized: %q", port.Protocol)
+		}
+	})
+}
+
+func FuzzVolumeSpec(f *testing.F) {
+	for _, input := range []string{"./site:/srv:ro,z", `C:\site:/srv:ro`, "/data", "{type: bind, source: ./site, target: /srv}", "[[/data]]"} {
+		f.Add([]byte(input))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var volume VolumeSpec
+		if err := yaml.Unmarshal(data, &volume); err != nil {
+			return
+		}
+		resolved := volume.ResolveSource("project")
+		if volume.Source == "" && resolved != "" {
+			t.Fatalf("anonymous volume resolved to %q", resolved)
+		}
+	})
+}

@@ -161,6 +161,8 @@ func TestRunUsage(t *testing.T) {
 		{"analyze bad flag", []string{"analyze", "--missing"}, 2, "flag provided but not defined"},
 		{"demo bad flag", []string{"demo", "--missing"}, 2, "flag provided but not defined"},
 		{"missing flag value", []string{"demo", "-o"}, 2, "flag needs an argument"},
+		{"empty analyze profile", []string{"analyze", "--profile="}, 2, "profile name must not be empty"},
+		{"empty demo profile", []string{"demo", "--profile", " "}, 2, "profile name must not be empty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -171,6 +173,87 @@ func TestRunUsage(t *testing.T) {
 				t.Fatalf("stdout = %q, stderr = %q, want %q", stdout.String(), stderr.String(), tc.message)
 			}
 		})
+	}
+}
+
+func TestRunProfiles(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "compose.yaml")
+	if err := os.WriteFile(file, []byte("services:\n  db:\n    image: postgres:16\n    profiles: [demo, database]\n  cache:\n    image: redis:7\n    profiles: [debug]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name                   string
+		args                   []string
+		count, score, demoCode int
+	}{
+		{"default", nil, 0, 0, 1},
+		{"one profile", []string{"--profile", "demo"}, 1, 100, 0},
+		{"second membership", []string{"--profile", "database"}, 1, 100, 0},
+		{"repeated", []string{"--profile", "demo", "--profile", "debug"}, 2, 50, 1},
+		{"duplicate", []string{"--profile", "demo", "--profile", "demo"}, 1, 100, 0},
+		{"all", []string{"--profile", "*"}, 2, 50, 1},
+		{"unknown", []string{"--profile", "missing"}, 0, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"analyze", "-f", file, "--json", "--safe-root", root}, tc.args...)
+			if code := Run(args, &stdout, &stderr); code != 0 {
+				t.Fatalf("analyze code = %d; stderr = %q", code, stderr.String())
+			}
+			var analysis struct {
+				Readiness struct{ Score int }
+				Services  []struct{ Name string }
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &analysis); err != nil {
+				t.Fatal(err)
+			}
+			if len(analysis.Services) != tc.count || analysis.Readiness.Score != tc.score {
+				t.Fatalf("analysis = %+v, want count %d and score %d", analysis, tc.count, tc.score)
+			}
+			output := filepath.Join(t.TempDir(), "demo")
+			stdout.Reset()
+			stderr.Reset()
+			args = append([]string{"demo", "-f", file, "-o", output, "--safe-root", root}, tc.args...)
+			if code := Run(args, &stdout, &stderr); code != tc.demoCode {
+				t.Fatalf("demo code = %d, want %d; stderr = %q", code, tc.demoCode, stderr.String())
+			}
+			if tc.demoCode != 0 {
+				if _, err := os.Stat(output); !os.IsNotExist(err) {
+					t.Fatalf("blocked demo created output: %v", err)
+				}
+				return
+			}
+			data, err := os.ReadFile(filepath.Join(output, "pocketstack.manifest.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var manifest struct{ Services []struct{ Name string } }
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				t.Fatal(err)
+			}
+			if len(manifest.Services) != 1 || manifest.Services[0].Name != "db" {
+				t.Fatalf("wrong generated services: %+v", manifest.Services)
+			}
+		})
+	}
+}
+
+func TestRunConfigDiagnostics(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(file, []byte("services:\n  app:\n    environment: wrong\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"analyze", "demo"} {
+		var stdout, stderr bytes.Buffer
+		if code := Run([]string{command, "-f", file}, &stdout, &stderr); code != 1 || stdout.Len() != 0 {
+			t.Fatalf("%s: code = %d, stdout = %q", command, code, stdout.String())
+		}
+		for _, want := range []string{file, "line 3", `service "app"`, "environment must be a mapping"} {
+			if !strings.Contains(stderr.String(), want) {
+				t.Errorf("%s: stderr = %q, want %q", command, stderr.String(), want)
+			}
+		}
 	}
 }
 

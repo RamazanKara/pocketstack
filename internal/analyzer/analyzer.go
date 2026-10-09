@@ -112,7 +112,7 @@ func AnalyzeFile(composeFile string) (*Analysis, error) {
 // file reference to allowedRoot. It is used by the GitHub Action when the
 // Compose file is controlled by a pull request and deployment credentials are
 // present. Passing an empty allowedRoot preserves the regular CLI behavior.
-func AnalyzeFileWithin(composeFile, allowedRoot string) (*Analysis, error) {
+func AnalyzeFileWithin(composeFile, allowedRoot string, profiles ...string) (*Analysis, error) {
 	absCompose, err := filepath.Abs(composeFile)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func AnalyzeFileWithin(composeFile, allowedRoot string) (*Analysis, error) {
 			return nil, err
 		}
 	}
-	analysis := Analyze(project, projectRoot, absCompose)
+	analysis := Analyze(project, projectRoot, absCompose, profiles...)
 	return &analysis, nil
 }
 
@@ -202,14 +202,22 @@ func pathWithin(root, candidate string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-func Analyze(project *compose.Project, projectRoot, composeFile string) Analysis {
+func Analyze(project *compose.Project, projectRoot, composeFile string, profiles ...string) Analysis {
 	names := make([]string, 0, len(project.Services))
 	skippedProfiles := make([]string, 0)
 	for name, service := range project.Services {
-		// Services gated behind `profiles:` are not started by a default
-		// `docker compose up`, so they should not count toward (or block)
-		// browser readiness. Mirror Compose's default activation set.
-		if len(service.Profiles) > 0 {
+		active := len(service.Profiles) == 0
+		for _, selected := range profiles {
+			if selected == "*" {
+				active = true
+			}
+			for _, profile := range service.Profiles {
+				if profile == selected {
+					active = true
+				}
+			}
+		}
+		if !active {
 			skippedProfiles = append(skippedProfiles, name)
 			continue
 		}
@@ -241,7 +249,11 @@ func Analyze(project *compose.Project, projectRoot, composeFile string) Analysis
 	}
 
 	if len(skippedProfiles) > 0 {
-		analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("Ignored %d profile-gated service(s) not started by default: %s.", len(skippedProfiles), strings.Join(skippedProfiles, ", ")))
+		reason := "not started by default"
+		if len(profiles) > 0 {
+			reason = "not enabled by the selected profiles"
+		}
+		analysis.Warnings = append(analysis.Warnings, fmt.Sprintf("Ignored %d profile-gated service(s) %s: %s.", len(skippedProfiles), reason, strings.Join(skippedProfiles, ", ")))
 	}
 
 	if !analysis.BrowserNative {

@@ -43,6 +43,8 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	composeFile := fs.String("f", "", "compose file")
 	jsonOutput := fs.Bool("json", false, "print JSON")
+	format := fs.String("format", "text", "output format: text, json, markdown")
+	profiles := profileFlags(fs)
 	safeRoot := fs.String("safe-root", "", "restrict local project files to this directory")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -50,18 +52,42 @@ func analyze(args []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
+	if *format != "text" && *format != "json" && *format != "markdown" {
+		fmt.Fprintf(stderr, "unknown output format %q; use text, json, or markdown\n", *format)
+		return 2
+	}
+	if *jsonOutput {
+		conflict := false
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "format" && *format != "json" {
+				conflict = true
+			}
+		})
+		if conflict {
+			fmt.Fprintln(stderr, "--json cannot be combined with --format other than json")
+			return 2
+		}
+		*format = "json"
+	}
 	resolvedCompose, err := resolveComposeFile(*composeFile)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	analysis, err := analyzer.AnalyzeFileWithin(resolvedCompose, *safeRoot)
+	analysis, err := analyzer.AnalyzeFileWithin(resolvedCompose, *safeRoot, (*profiles)...)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if *jsonOutput {
+	if *format == "json" {
 		return printJSON(stdout, stderr, analysis)
+	}
+	if *format == "markdown" {
+		if _, err := io.WriteString(stdout, markdownReport(analysis)); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
 	}
 	fmt.Fprintf(stdout, "Mode: %s\n", analysis.Mode)
 	fmt.Fprintf(stdout, "Browser readiness: %d%% (%s)\n", analysis.Readiness.Score, analysis.Readiness.Summary)
@@ -105,6 +131,7 @@ func demo(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	composeFile := fs.String("f", "", "compose file")
 	outputDir := fs.String("o", "pocketstack-demo", "output directory")
+	profiles := profileFlags(fs)
 	safeRoot := fs.String("safe-root", "", "restrict local project files to this directory")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -121,6 +148,7 @@ func demo(args []string, stdout, stderr io.Writer) int {
 		ComposeFile: resolvedCompose,
 		OutputDir:   *outputDir,
 		AllowedRoot: *safeRoot,
+		Profiles:    *profiles,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -137,8 +165,23 @@ func printJSON(stdout, stderr io.Writer, value any) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintln(stdout, string(data))
+	if _, err := fmt.Fprintln(stdout, string(data)); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	return 0
+}
+
+func profileFlags(fs *flag.FlagSet) *[]string {
+	var profiles []string
+	fs.Func("profile", "enable a Compose profile (repeatable; * enables all)", func(value string) error {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("profile name must not be empty")
+		}
+		profiles = append(profiles, value)
+		return nil
+	})
+	return &profiles
 }
 
 func resolveComposeFile(path string) (string, error) {
@@ -157,7 +200,7 @@ func usage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(`PocketStack turns browser-compatible Docker Compose projects into static demos.
 
 Usage:
-  pocketstack analyze [-f compose.yaml] [--json] [--safe-root directory]
-  pocketstack demo [-f compose.yaml] [-o pocketstack-demo] [--safe-root directory]
+  pocketstack analyze [-f compose.yaml] [--json | --format text|json|markdown] [--profile name] [--safe-root directory]
+  pocketstack demo [-f compose.yaml] [-o pocketstack-demo] [--profile name] [--safe-root directory]
   pocketstack version`))
 }

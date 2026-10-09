@@ -19,10 +19,15 @@ over a partial demo that looks more compatible than it is.
 
 ## Prerequisites
 
-- **Go** — to build the CLI and run `go test` / `go vet`.
+- **Go** — use the latest Go 1.26 patch for checks and releases; Staticcheck
+  2026.2 cannot yet read Go 1.27 export data. Source compatibility remains Go 1.22+.
 - **Node 26** — the JavaScript toolchain targets Node 26. Use `nvm use` to
-  select it (CI and release workflows pin `node-version: "26"`).
-- **GNU Make and a C compiler** — `make test` runs Go's race detector.
+  select it (CI pins `node-version: "26"`).
+- **GNU Make** — on Windows, also put Git Bash's utilities on PATH.
+- **A C compiler when cgo is enabled** — `make test` runs Go's race detector
+  only when `go env CGO_ENABLED` is `1`.
+- **Staticcheck and govulncheck** — install the tools below and put the Go
+  binary install directory on PATH.
 - **Linux or WSL** — Action test fixtures use Unix executable scripts.
 
 ```sh
@@ -52,7 +57,10 @@ Run these before opening a pull request:
 
 ```sh
 npm ci
+go install honnef.co/go/tools/cmd/staticcheck@latest
+go install golang.org/x/vuln/cmd/govulncheck@latest
 make build lint test
+make fuzz
 make smoke
 ```
 
@@ -61,14 +69,17 @@ make smoke
   you run it.
 - `make smoke` builds the binary, regenerates every example demo, and runs the
   generated-demo checks.
+- `make lint` checks gofmt, vet, Staticcheck, and govulncheck.
+- `make fuzz` runs bounded fuzz sessions for Compose YAML, ports, volumes,
+  and env files. Seed cases also run during normal Go tests.
 
-The maintenance CI workflow runs `make build lint test` on pushes and manual
+The single CI workflow runs `make build lint test` on pushes and manual
 dispatch. Run it locally when GitHub Actions is unavailable. Browser checks and
 release checks remain separate.
 
 ::: tip
-`make release-check` is the **full gate** — it additionally runs lint/`go vet`, a
-GoReleaser snapshot build, and checksum verification. Run it before preparing a
+`make release-check` is the **full gate** — it also runs lint, fuzzing, six local
+release builds, and SHA256SUMS verification. Run it before preparing a
 release. See [releasing](/contribute/releasing).
 :::
 

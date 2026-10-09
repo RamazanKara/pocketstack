@@ -40,11 +40,13 @@ arbitrary daemons, and Linux networking remain unsupported in browser-only v1.
 
 ## Compose features
 
-PocketStack analyzes a **single** Compose file and maps the default service set
+PocketStack analyzes a **single** Compose file and maps the active service set
 to adapters. A few directives are handled specifically:
 
 - **`profiles:`** — services gated behind a profile are not started by a default
-  `docker compose up`, so PocketStack skips them. Skipped services do not count
+  `docker compose up`, so PocketStack skips them unless enabled with `--profile
+  name` on `analyze` or `demo`. Repeat the flag to enable several profiles, or use
+  `--profile "*"` for all. Skipped services do not count
   toward, or block, browser readiness, and the analysis warns when they are
   skipped.
 - **`extends:`** — unsupported. PocketStack does not resolve an extended base
@@ -65,7 +67,8 @@ This is not a full Compose validator. Directives outside the modeled subset,
 including `privileged`, `devices`, and `network_mode`, are currently ignored.
 An adapter match does not prove that those runtime requirements can be met.
 A project containing only profile-gated services is blocked with zero active
-services.
+services until a matching profile is enabled. Malformed environment, label,
+and env-file values produce [line-aware diagnostics](/guide/cli#configuration-diagnostics).
 
 ## Readiness report
 

@@ -8,6 +8,24 @@ Per-release detail lives under [docs/release-notes/](docs/release-notes/index.md
 
 ## [Unreleased]
 
+### Added
+- Markdown compatibility reports with `analyze --format markdown`, including
+  readiness, service mappings, blockers, suggestions, and warnings. `--format
+  text|json` selects the existing outputs; `--json` remains supported.
+- Repeatable `--profile` selection for `analyze` and `demo`, including `*` for
+  all profiles. Default service selection and the JSON schema are unchanged.
+- Compose diagnostics with filename and line context; malformed environment,
+  label, and env-file values are rejected instead of silently ignored.
+- Table-driven regression tests and fuzz targets for Compose YAML, port and
+  volume syntax, and env files.
+- Local builds for Linux, macOS, and Windows (amd64/arm64) with `SHA256SUMS`
+  through `make release-local` and `make verify-checksums`.
+
+### Changed
+- Keep one CI workflow; Pages and release preparation run locally. Lint now
+  checks formatting, `go vet`, Staticcheck, and govulncheck. Race tests run only
+  when cgo is enabled, and build/smoke targets use the platform executable suffix.
+
 ### Fixed
 - Preserve significant whitespace in inline and quoted env-file values through
   analysis and browser startup. Valueless environment mappings now use an empty

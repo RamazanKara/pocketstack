@@ -113,11 +113,21 @@ analyzer and generator for local use:
 # Explain every service mapping and blocker.
 pocketstack analyze -f examples/static-site/compose.yaml
 
+# Save a compatibility report for an issue or pull request.
+pocketstack analyze -f examples/static-site/compose.yaml --format markdown > compatibility.md
+
 # Generate only when the whole active stack is browser-compatible.
 pocketstack demo -f examples/static-site/compose.yaml -o pocketstack-demo
 ```
 
 Run these examples from the repository root, or substitute your own Compose file.
+
+Enable configured Compose profiles with `--profile preview` on either `analyze`
+or `demo`; repeat the flag for multiple profiles, or use `--profile "*"` for all.
+Services without profiles remain active. The default text report and `--json`
+output are still available. Malformed Compose fields now report the filename
+and line, including invalid environment, label, and env-file values. See the
+[CLI reference](docs/guide/cli.md) for examples and validation limits.
 
 Download a binary from
 [GitHub Releases](https://github.com/ramazankara/pocketstack/releases/latest)
@@ -144,5 +154,6 @@ and [SECURITY.md](SECURITY.md).
 - [Hosting and headers](docs/deploy/hosting.md)
 - [Architecture](docs/reference/architecture.md)
 - [Contributing](CONTRIBUTING.md)
+- [Local release builds and SHA256SUMS](docs/contribute/releasing.md)
 
 Licensed under [MIT](LICENSE).

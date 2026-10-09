@@ -3,8 +3,8 @@
 PocketStack has three commands: `analyze`, `demo`, and `version`. The CLI inspects and packages a local Compose project; it never starts a server or contacts a backend.
 
 ```text
-pocketstack analyze [-f compose.yaml] [--json] [--safe-root directory]
-pocketstack demo [-f compose.yaml] [-o pocketstack-demo] [--safe-root directory]
+pocketstack analyze [-f compose.yaml] [--json | --format text|json|markdown] [--profile name] [--safe-root directory]
+pocketstack demo [-f compose.yaml] [-o pocketstack-demo] [--profile name] [--safe-root directory]
 pocketstack version
 ```
 
@@ -24,11 +24,13 @@ Flags:
 | --- | --- | --- |
 | `-f` | (resolved) | Path to the Compose file. If omitted, PocketStack searches the working directory (see [Compose-file resolution](#compose-file-resolution)). |
 | `--json` | `false` | Print the full analysis as JSON instead of the human-readable report. |
+| `--format` | `text` | Select `text`, `json`, or `markdown`. `--json` can only be combined with an explicit `--format json`. |
+| `--profile` | (none) | Enable a Compose profile; repeat for multiple profiles, or pass `"*"` for all. |
 | `--safe-root` | (unrestricted) | Confine Compose, bind mounts, env files, and labeled assets to this directory; reject paths or symlinks outside it. |
 
 ### `demo`
 
-Generates a static, browser-native demo from a Compose file. This only succeeds when every default service maps to a browser adapter; otherwise it exits with an error and you should run `analyze` to see why.
+Generates a static, browser-native demo from a Compose file. This only succeeds when every active service maps to a browser adapter; otherwise it exits with an error and you should run `analyze` with the same profiles to see why.
 
 ```sh
 pocketstack demo -f compose.yaml -o pocketstack-demo
@@ -40,6 +42,7 @@ Flags:
 | --- | --- | --- |
 | `-f` | (resolved) | Path to the Compose file (same resolution as `analyze`). |
 | `-o` | `pocketstack-demo` | Output directory for the generated demo. |
+| `--profile` | (none) | Enable profiles using the same selection as `analyze`. |
 | `--safe-root` | (unrestricted) | Apply the same project-path restrictions as `analyze`. |
 
 Output may be inside a source directory; it is excluded from copied assets.
@@ -121,6 +124,74 @@ The human-readable report is printed in this order:
 ::: tip
 Use `--json` in CI to gate on `readiness.status` or `readiness.score` rather than parsing the text report.
 :::
+
+## Markdown reports
+
+Save a report for an issue, pull request, or build artifact:
+
+```sh
+pocketstack analyze -f examples/static-site/compose.yaml --format markdown > compatibility.md
+```
+
+The report includes readiness, each active service's adapter or blockers,
+asset sources, suggestions, service and project warnings, and next steps.
+Project text is escaped so names, paths, and messages cannot inject Markdown
+structure or HTML. Environment values and packaged configuration are omitted;
+use JSON when you need the complete analysis object.
+
+Markdown uses the same exit codes as text and JSON. An incompatible stack still
+returns `0` from `analyze`; inspect JSON readiness when gating deployment.
+
+## Selecting profiles
+
+Services without profiles are always active. With no `--profile` flags, services
+that declare profiles are skipped, as before. A service with several profiles
+is included when any one matches. For example:
+
+```yaml
+services:
+  db:
+    image: postgres:16
+    profiles: [preview, database]
+  cache:
+    image: redis:7
+    profiles: [debug]
+```
+
+```sh
+pocketstack analyze -f compose.yaml --profile preview
+pocketstack demo -f compose.yaml --profile preview -o pocketstack-demo
+pocketstack analyze -f compose.yaml --profile preview --profile debug
+pocketstack analyze -f compose.yaml --profile "*" --format markdown
+```
+
+The first two commands select `db`. The last two also select the incompatible
+Redis service, so readiness becomes partial and generation would be blocked.
+Only selected services appear in the generated manifest and packaged assets.
+Unknown profile names activate no additional services; duplicates have no
+effect. Empty profile arguments are usage errors. PocketStack reads explicit
+flags, not `COMPOSE_PROFILES` from the host environment. Dependencies and health
+checks retain their existing behavior; see [Compose features](/adapters/#compose-features).
+
+## Configuration diagnostics
+
+Both commands report the Compose filename and line for YAML decoding errors
+and invalid modeled values. For example, `environment: DEBUG=true` produces:
+
+```text
+compose.yaml: service "app": line 3: environment must be a mapping or a list of KEY=value strings
+```
+
+Use `environment: {DEBUG: "true"}` or `environment: [DEBUG=true]` instead.
+Environment and label entries must be scalar values; env-file paths must be
+non-empty strings, and long env-file entries need a `path` and a valid
+`required` boolean. Existing quoted booleans remain accepted. Invalid service
+names, duplicate keys, and malformed typed fields also carry line context.
+
+YAML anchors, merge keys, extension fields, scalar/null environment values,
+optional env files, and port ranges remain supported. This validates the
+subset PocketStack reads, not the entire Compose specification. Unknown
+directives still need review against the [adapter limits](/adapters/).
 
 ## Compose-file resolution
 

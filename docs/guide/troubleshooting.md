@@ -54,13 +54,19 @@ A few Compose details that are handled automatically, so you don't need to work 
 
 - **Port ranges** like `3000-3005:3000-3005` are accepted. The first port of the range is used, and adapter selection does not depend on the exact port.
 - **Image name variants** are normalized. Short names (`postgres`), Docker Hub official names (`library/postgres`), and registry-qualified names (`docker.io/library/postgres:16`, `ghcr.io/org/app`) all resolve to the same adapter.
-- **`profiles:`** — services gated behind a profile aren't started by a default `docker compose up`, so PocketStack skips them. They don't count toward or block readiness, and you'll see a warning that services were skipped.
+- **`profiles:`** — services gated behind a profile are skipped by default. Enable them with `--profile preview` on both `analyze` and `demo`; repeat the flag or use `--profile "*"` for all. Skipped services don't count toward readiness and appear in a warning.
 
 ::: info Not handled automatically
 `extends:` is not resolved, and multiple Compose files / overrides aren't merged. Flatten the service (inline its image, labels, ports, and volumes) and pass a single file with `-f`. See [adapters](/adapters/) for per-adapter limits.
 :::
 
 ## Getting more detail
+
+If analysis fails before producing a report, read the filename and line on
+stderr. For example, change `environment: DEBUG=true` to
+`environment: [DEBUG=true]` or `environment: {DEBUG: "true"}`. A long `env_file`
+entry must include a non-empty `path`, with `required: true` or `false` when
+specified. See [configuration diagnostics](/guide/cli#configuration-diagnostics).
 
 Add `--json` to `analyze` for the full machine-readable analysis, including `readiness`, per-service `unsupported`/`suggestions`, `warnings`, `nextSteps`, and `hostRequirements`:
 
@@ -69,3 +75,6 @@ pocketstack analyze -f compose.yaml --json
 ```
 
 See the [CLI reference](/guide/cli) for the complete output shape and exit codes.
+
+Use `--format markdown > compatibility.md` to save a readable report with
+blockers and suggestions for an issue or pull request.

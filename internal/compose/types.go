@@ -346,17 +346,9 @@ func LoadFile(path string) (*Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	var project Project
-	if err := yaml.Unmarshal(data, &project); err != nil {
-		return nil, err
+	project, err := parseProject(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if len(project.Services) == 0 {
-		return nil, fmt.Errorf("compose file %s has no services", path)
-	}
-	for name := range project.Services {
-		if name == "." || !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) {
-			return nil, fmt.Errorf("invalid service name %q: must be a single local path component", name)
-		}
-	}
-	return &project, nil
+	return project, nil
 }
